@@ -73,3 +73,7 @@ executable trait-lineariser
     hs-source-dirs: source
     main-is:        Main.hs
     -- other-modules:
+    default-extensions: ImplicitParams
+    build-depends: optparse-applicative == 0.14.*,
+                   encoding == 0.8.*,
+                   heredoc == 0.2.*
