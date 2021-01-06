@@ -71,9 +71,10 @@ common properties
 executable trait-lineariser
     import:         properties
     hs-source-dirs: source
-    main-is:        Main.hs
-    -- other-modules:
+    main-is:        CLI.hs
+    other-modules:  Traits
     default-extensions: ImplicitParams
-    build-depends: optparse-applicative == 0.14.*,
+    build-depends: filepath == 1.*,
                    encoding == 0.8.*,
+                   optparse-applicative == 0.14.*,
                    heredoc == 0.2.*

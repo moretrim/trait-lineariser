@@ -1,11 +1,15 @@
-module Main where
-
-import Prelude hiding                              (getContents, readFile)
+module Traits
+    ( Parser
+    , Trait(..), traitName, traitMods
+    , Traits(..)
+        , traitsNullPersonality, traitsPersonalities, traitsNullBackground, traitsBackgrounds
+        , traitsStructure
+    ) where
 
 import GHC.Generics                                (Generic)
 
 import Control.Applicative hiding                  (many, some)
-import Control.Applicative.Permutations
+import Control.Applicative.Permutations            (runPermutation, toPermutation)
 import Control.Lens hiding                         (noneOf)
 
 import Data.Functor
@@ -17,15 +21,6 @@ import qualified Data.Text.IO as Text
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as Lex
-
--- CLI
-import Data.Encoding.UTF8
-import Data.Encoding.CP1252
-import System.Exit                                 (exitFailure)
-import System.IO                                   (stderr, hPutStrLn)
-import System.IO.Encoding                          (getContents, readFile)
-import Text.Heredoc
-import qualified Options.Applicative as Args
 
 type Parser = Parsec Void Text
 
@@ -186,65 +181,3 @@ traitsStructure = do
 -- Linearise --
 ---------------
 
----------
--- CLI --
----------
-
-note :: String -> IO ()
-note = hPutStrLn stderr
-
-parseArgs :: IO (Maybe FilePath)
-parseArgs = Args.execParser $ Args.info (Args.helper <*> args) desc
-  where
-    args = optional . Args.argument Args.str $
-        Args.help [here|
-            Path to the traits file to linearise.
-            Reads from standard input if the argument is ‘-’ or is left unspecified.
-
-            Assumes WINDOWS-1252 encoding when reading from a path, and UTF-8 when reading from
-            standard input. (In the latter case, iconv(1) can help.)
-            |]
-        <> Args.metavar "PATH/TO/traits.txt"
-
-    desc =
-        Args.fullDesc
-        <> Args.progDesc [here|
-            Linearise a `<mod-path>/common/traits.txt` mod file. The linearised output is written
-            to standard output, while statistics and errors are written to standard error.
-            |]
-
-main :: IO ()
-main = do
-    userSource <- parseArgs
-    (source, contents) <- case userSource of
-        Just traitsPath | traitsPath /= "-" -> do
-            let ?enc = CP1252
-            contents <- Text.pack <$> readFile traitsPath
-            pure (traitsPath, contents)
-
-        _ -> do
-            let ?enc = UTF8
-            contents <- Text.pack <$> getContents
-            pure ("<stdin>", contents)
-
-    traits <- case runParser traitsStructure source contents of
-        Left errs -> do
-            note $ "Parsing of traits file failed:\n\n" <> (errorBundlePretty errs)
-
-            exitFailure
-
-        Right traits -> do
-            let personalities = length $ _traitsPersonalities traits
-                backgrounds   = length $ _traitsBackgrounds traits
-            note $
-                "Found "
-                <> show personalities
-                <> " personalities and "
-                <> show backgrounds
-                <> " backgrounds, linearising to "
-                <> show (personalities * backgrounds)
-                <> " composite traits."
-
-            pure traits
-
-    print traits
