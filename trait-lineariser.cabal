@@ -34,7 +34,7 @@ common properties
                             GeneralisedNewtypeDeriving,
                             DeriveAnyClass,
                             DerivingVia,
-                        MultiParamTypeClasses, FlexibleInstances,
+                        MultiParamTypeClasses, FlexibleInstances, UndecidableInstances
                         ScopedTypeVariables, TypeApplications,
                         FlexibleContexts, ConstraintKinds,
                         TypeFamilies,
@@ -77,4 +77,4 @@ executable trait-lineariser
     build-depends: filepath == 1.*,
                    encoding == 0.8.*,
                    optparse-applicative == 0.14.*,
-                   heredoc == 0.2.*
+                   here == 1.*
