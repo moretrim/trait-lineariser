@@ -64,6 +64,8 @@ common properties
 
     build-depends: base == 4.*,
                    lens == 4.*,
+                   hashable == 1.*,
+                   unordered-containers == 0.2.*,
                    text == 1.*,
                    megaparsec == 8.*,
                    parser-combinators == 1.*
@@ -72,7 +74,7 @@ executable trait-lineariser
     import:         properties
     hs-source-dirs: source
     main-is:        CLI.hs
-    other-modules:  Traits
+    other-modules:  Types, Traits, Localisation
     default-extensions: ImplicitParams
     build-depends: filepath == 1.*,
                    encoding == 0.8.*,

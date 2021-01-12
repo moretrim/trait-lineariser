@@ -3,8 +3,9 @@ module Traits
     , Trait(..), traitName, traitMods
     , Traits(..)
         , traitsNullPersonality, traitsPersonalities, traitsNullBackground, traitsBackgrounds
+        , traitsLocalisationKeys
         , traitsStructure
-    , linearise
+    , lineariseTraits
     , lineariserHeader
     , formatTraits
     ) where
@@ -20,17 +21,23 @@ import Data.Functor
 import Data.Functor.Compose
 import Data.Functor.Classes
 import Data.Foldable
+
 import Data.List.NonEmpty                          (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
+import qualified Data.HashSet as HashSet
+
 import Data.Void
 import Data.Char
 import Data.String.Here.Interpolated
 import Data.Text                                   (Text)
 import qualified Data.Text as Text
-import qualified Data.Text.IO as Text
+--import qualified Data.Text.IO as Text
+
 import Text.Megaparsec hiding                      (some)
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as Lex
+
+import Types
 
 type Parser = Parsec Void Text
 
@@ -63,17 +70,22 @@ symbol' = Lex.symbol ws'
 
 -- Parsing --
 
-identifier, quotedIdentifier, unquotedIdentifier :: Parser Text
+identifier, quotedIdentifier, unquotedIdentifier :: Parser Identifier
 
 identifier = quotedIdentifier <|> unquotedIdentifier
 
-quotedIdentifier =
-    lexeme . between quote quote $ takeWhile1P (Just "quoted identifier character") (/= '"')
-      where
-        quote = char '"'
-
-unquotedIdentifier = lexeme $ takeWhile1P (Just "identifier character") validIdentifierChar
+quotedIdentifier = parser <?> descr
   where
+    parser = fmap QuotedIdentifier . lexeme . between quote quote $
+        takeWhile1P (Just "quoted identifier character") (/= '"')
+    descr = "a quoted identifer (e.g. `\"a quoted identifier\"`)"
+    quote = char '"'
+
+unquotedIdentifier = parser <?> descr
+  where
+    parser = fmap UnquotedIdentifier . lexeme $
+        takeWhile1P (Just "identifier character") validIdentifierChar
+    descr = "an unquoted identifier (e.g. `unquoted-identifier`)"
     validIdentifierChar c = not (isSpace c) && c `notElem` ("\"#={};,()!&" :: String)
 
 -- | For intermingling parse results with original comments.
@@ -97,7 +109,7 @@ block :: Parser body -> Parser body
 block = between (symbol "{") (symbol "}")
 
 -- | `key = value` pair, where key is an identifier and value will be parsed as raw as possible.
-identifierPair :: Parser (Text, Text)
+identifierPair :: Parser (Identifier, Text)
 identifierPair = do
     key <- identifier
     symbol "="
@@ -126,13 +138,13 @@ entry key body = sectionKey *> symbol "=" *> block body
 -- That is, it is a named collection of army modifiers. In order to be as agnostic as possible,
 -- modifiers are stored as key–value pairs of raw text.
 data Trait = Trait
-    { _traitName :: Text
-    , _traitMods :: [Interspersed (Text, Text)]
+    { _traitName :: Identifier
+    , _traitMods :: [Interspersed (Identifier, Text)]
     }
     deriving stock (Show, Read, Eq, Ord, Generic)
 makeLenses ''Trait
 
-modifier :: Parser (Text, Text)
+modifier :: Parser (Identifier, Text)
 modifier = identifierPair
 
 -- | Trait parser
@@ -154,6 +166,14 @@ deriving instance Show (f Trait) => Show (Traits f)
 deriving instance Read (f Trait) => Read (Traits f)
 deriving instance Eq   (f Trait) => Eq   (Traits f)
 deriving instance Ord  (f Trait) => Ord  (Traits f)
+
+-- | Compute localisation keys.
+traitsLocalisationKeys :: Traits NonEmpty -> Keys
+traitsLocalisationKeys ts = foldMap traitNames [ _traitsPersonalities ts
+                                               , _traitsBackgrounds ts
+                                               ]
+  where
+    traitNames = HashSet.fromList . map _traitName . toList
 
 -- | `common/traits.txt` structure, parsed into a `Traits`.
 traitsStructure :: Parser (Traits NonEmpty)
@@ -184,7 +204,8 @@ traitsStructure = do
         }
 
   where
-    nullTrait kind key = (Trait <$> pure key <*> entry key (many' modifier)) <?> descr
+    nullTrait kind key =
+        (Trait <$> pure (UnquotedIdentifier key) <*> entry key (many' modifier)) <?> descr
       where
         key'  = Text.unpack key
         kind' = Text.unpack kind
@@ -197,12 +218,12 @@ traitsStructure = do
 -- Linearise --
 ---------------
 
-type Grouped = Compose (Compose NonEmpty ((,) Text)) NonEmpty
+type Grouped = Compose (Compose NonEmpty ((,) Identifier)) NonEmpty
 
 -- | Linearise all traits, combining each personality–background combination into a single
 -- background and leaving only a unit personality.
-linearise :: Traits NonEmpty -> Traits Grouped
-linearise traits = traits
+lineariseTraits :: Traits NonEmpty -> Traits Grouped
+lineariseTraits traits = traits
     { _traitsPersonalities = pure unitPersonality -- not really used by the code, but it’s nice to
                                                   -- be thorough
     , _traitsBackgrounds = Compose . Compose $ do
@@ -213,7 +234,7 @@ linearise traits = traits
     }
       where
         traitProduct personality background = Trait
-            { _traitName = _traitName personality <> "x" <> _traitName background
+            { _traitName = _traitName personality `identifierProduct` _traitName background
             , _traitMods = _traitMods personality <> [separator] <> _traitMods background
             }
               where
@@ -221,7 +242,7 @@ linearise traits = traits
                 separator = Comment "####"
 
         unitPersonality = Trait
-            { _traitName = "unit_personality"
+            { _traitName = UnquotedIdentifier "unit_personality"
             , _traitMods = mempty
             }
 
@@ -245,11 +266,12 @@ formatBlock level body = [iTrim|
     {${body}${ if Text.null body then "" else indentedLineBreak "\n" level }}
 |]
 
-formatIdentifier :: Text -> Text
-formatIdentifier = id
+formatIdentifier :: Identifier -> Text
+formatIdentifier (QuotedIdentifier contents)     = "\"" <> contents <> "\""
+formatIdentifier (UnquotedIdentifier identifier) = identifier
 
-formatMod :: Interspersed (Text, Text) -> Text
-formatMod (Interspersed (key, value)) = [iTrim|${key} = ${value}|]
+formatMod :: Interspersed (Identifier, Text) -> Text
+formatMod (Interspersed (key, value)) = [iTrim|${formatIdentifier key} = ${value}|]
 formatMod (Comment comment) = comment
 
 formatTrait :: Int -> Trait -> Text
@@ -258,9 +280,9 @@ ${ formatIdentifier $ _traitName item } = ${
     formatBlock level . offset' (succ level) . map formatMod $ _traitMods item }
 |]
 
-formatGroup :: Int -> (Text, NonEmpty Trait) -> Text
+formatGroup :: Int -> (Identifier, NonEmpty Trait) -> Text
 formatGroup level (group, traits) = [iTrim|
-## #${group}
+## #${formatIdentifier group}
 ${ indentedLineBreak "\n" level }${ offset "\n\n" level . toList $ fmap (formatTrait level) traits }
 |]
 

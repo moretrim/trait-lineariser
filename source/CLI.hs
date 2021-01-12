@@ -25,6 +25,7 @@ import System.IO.Encoding                    (getContents, readFile, writeFile)
 import qualified Options.Applicative as Args
 
 import Traits
+import Localisation
 
 note :: String -> IO ()
 note = hPutStrLn stderr
@@ -106,4 +107,7 @@ an already linearised trait file?)
             pure traits
 
     let ?enc = CP1252
-    writeFile "traits.txt" . Text.unpack . formatTraits $ linearise traits
+    let originalKeys = traitsLocalisationKeys traits
+
+    writeFile "traits.txt" . Text.unpack . formatTraits $ lineariseTraits traits
+    writeFile "traits.csv" . Text.unpack . formatKeys $ lineariseKeys originalKeys
