@@ -139,13 +139,13 @@ modifier = identifierPair
 trait :: Parser Trait
 trait = Trait <$> identifier <*> (symbol "=" *> block (many' modifier))
 
--- | The contents of a `common/traits.txt` file. Parametrised over the container for personalities
+-- | The contents of a `common/traits.txt` file. Parametrised over the container for backgrounds
 -- so as to allow grouping, refer to `linearise`.
 data Traits f = Traits
     { _traitsNullPersonality :: Trait -- ^ The `no_personality` entry that the game expects
-    , _traitsPersonalities   :: f Trait
+    , _traitsPersonalities   :: NonEmpty Trait
     , _traitsNullBackground  :: Trait -- ^ The `no_background` entry that the game expects
-    , _traitsBackgrounds     :: NonEmpty Trait
+    , _traitsBackgrounds     :: f Trait
     }
     deriving stock (Generic)
 makeLenses ''Traits
@@ -200,28 +200,28 @@ traitsStructure = do
 type Grouped = Compose (Compose NonEmpty ((,) Text)) NonEmpty
 
 -- | Linearise all traits, combining each personality–background combination into a single
--- personality and leaving only a unit background.
+-- background and leaving only a unit personality.
 linearise :: Traits NonEmpty -> Traits Grouped
 linearise traits = traits
-    { _traitsPersonalities = Compose . Compose $ do
+    { _traitsPersonalities = pure unitPersonality -- not really used by the code, but it’s nice to
+                                                  -- be thorough
+    , _traitsBackgrounds = Compose . Compose $ do
         personality <- _traitsPersonalities traits
         -- group by personality
         pure . (_traitName personality,) $ do
             traitProduct personality <$> _traitsBackgrounds traits
-    , _traitsBackgrounds = pure unitBackground -- not really used by the code, but it’s nice to be
-                                               -- thorough
     }
       where
         traitProduct personality background = Trait
-            { _traitName = _traitName personality <> "×" <> _traitName background
+            { _traitName = _traitName personality <> "x" <> _traitName background
             , _traitMods = _traitMods personality <> [separator] <> _traitMods background
             }
               where
                 -- | marks the separation between personality mods and background mods
                 separator = Comment "####"
 
-        unitBackground = Trait
-            { _traitName = "unit_background"
+        unitPersonality = Trait
+            { _traitName = "unit_personality"
             , _traitMods = mempty
             }
 
@@ -279,27 +279,22 @@ formatTraits traits = do
     [iTrim|
 ${lineariserHeader}
 #
-# This file should be in the WINDOWS-1252 (aka CP-1252) encoding that the game expects. If the
-# following phrases do NOT look surrounded by quotation marks, something went wrong & you should
-# verify your editor settings:
-# - ‘single quotes’
-# - “double quotes”
-# - «guillemets»
-#
 # For ease of navigation every group of personality-background pairs is opened by a comment. E.g.
-# when looking for the group of all “earnest” pairs, try searching for `#earnest`.
-
-background = {
-    ${ formatTrait 1 $ _traitsNullBackground traits }
-
-    ## Looking for all the backgrounds? they have all been merged into the personality-background
-    ## pairs just below. Do NOT remove this neutral element background without leaving at least one
-    ## background beyond the null background.
-    unit_background = {}
-}
+# when looking for the group of all "earnest" pairs, try searching for `#earnest`.
 
 personality = {
     ${ formatTrait 1 $ _traitsNullPersonality traits }
-${ formatGroups 1 $ _traitsPersonalities traits }
+
+    ## Looking for all the personalities? they have all been merged into the personality-background
+    ## pairs just below. Do NOT remove this neutral element personality without leaving at least
+    ## another to replace it. It serves as the stock personality for all leaders. (This is separate
+    ## from the `no_personality` entry that the game expects and uses e.g. for leaderless armies and
+    ## navies.)
+    unit_personality = {}
+}
+
+background = {
+    ${ formatTrait 1 $ _traitsNullBackground traits }
+${ formatGroups 1 $ _traitsBackgrounds traits }
 }
 |]
