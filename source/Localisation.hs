@@ -193,8 +193,11 @@ row = do
         -- - horizontal tab: housedivided2_1.csv
         -- - ‘X’: newtext.csv
         -- - ‘"’: newtext.csv
+        --
+        -- The following is from HFM:
+        -- - ‘\’: FlavoursMod_events.csv
         -- )
-        crud = many (oneOf (";,xX< .\ETX\t\"" :: String)) <?> "any amount of row terminators [;,x]"
+        crud = many (oneOf (";,xX< .\ETX\t\"\\" :: String)) <?> "any amount of row terminators [;,x]"
 
 -- | Victoria II’s localisation files take the form of simple semicolon-separated data, with no
 -- support for quoting or need for a header.

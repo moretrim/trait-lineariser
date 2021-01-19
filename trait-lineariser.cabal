@@ -44,6 +44,7 @@ common properties
     ghc-options:        -fwarn-incomplete-record-updates
 
     -- warnings
+
     if flag(review)
         ghc-options:    -Wall -fwarn-tabs -fwarn-incomplete-uni-patterns
     elif flag(release)
@@ -54,6 +55,9 @@ common properties
                         -Werror=unticked-promoted-constructors
 
     -- specific compilation options
+
+    ghc-options:        -threaded
+
     if flag(release)
         ghc-options:    -O2 -optl=-static -optl=-pthread -funbox-small-strict-fields
         cc-options:     -O2 -static
@@ -76,7 +80,9 @@ executable trait-lineariser
     main-is:        CLI.hs
     other-modules:  Types, Parsing, Traits, Localisation
     default-extensions: ImplicitParams
-    build-depends: filepath == 1.*,
+    build-depends: async == 2.*,
+                   concurrent-output == 1.*,
+                   filepath == 1.*,
                    directory == 1.*,
                    encoding == 0.8.*,
                    optparse-applicative == 0.14.*,

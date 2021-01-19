@@ -29,20 +29,23 @@ import Text.Megaparsec
 import System.Exit                           (exitFailure)
 import System.FilePath                       ((</>), takeExtension)
 import System.Directory                      (listDirectory)
-import System.IO                             (stderr, hPutStr, hPutStrLn)
 import System.IO.Encoding                    (getContents, readFile, writeFile)
 
 import qualified Options.Applicative as Args
+
+import Control.Concurrent.Async
+import System.Console.Concurrent
+import System.Console.Regions
 
 import Types -- TODO remove
 import Traits
 import Localisation
 
-note :: String -> IO ()
-note = hPutStrLn stderr
-
 noteBriefly :: String -> IO ()
-noteBriefly = hPutStr stderr
+noteBriefly = outputConcurrent
+
+note :: String -> IO ()
+note = noteBriefly . (<> "\n")
 
 note' :: [String] -> IO ()
 note' = note . mconcat
@@ -110,8 +113,9 @@ parseArgs = Args.execParser $ Args.info (Args.helper <*> args) desc
             |]
 
 main :: IO ()
-main = do
+main = displayConsoleRegions $ do
     (modPath, extraPaths) <- over _1 (fromMaybe ".") <$> parseArgs
+
     let traitsPath = modPath </> "common" </> "traits.txt"
         -- N.b. order is significant, see below.
         paths      = modPath:extraPaths
@@ -157,31 +161,34 @@ already linearised trait file?)
 
     let (personalities, backgrounds) = traitsLocalisationKeys traits
 
-    localisation <- fmap (HashMap.unions . concat) . for paths $ \base -> do
-        noteBriefly [i|Adding localisation from base path ‘${base}’… |]
+    localisation <- fmap (HashMap.unions . concat) . forConcurrently paths $ \base ->
+        withConsoleRegion Linear $ \region -> do
+            let regionOpener = [i|Adding localisation from base path ‘${base}’…|] :: String
+            setConsoleRegion region regionOpener
 
-        let pickCSVs = filter csvExtension
-            csvExtension = (== ".csv") . takeExtension
+            let pickCSVs = filter csvExtension
+                csvExtension = (== ".csv") . takeExtension
 
-        -- N.b. order is very significant. The key that appears in the first file in lexical[1]
-        -- order is the one that sets the translation, subsequent ones are redundant.
-        --
-        -- [1]: presumably, at any rate, since this has not been tested in depth
-        locFiles <- (sort . pickCSVs) <$> listDirectory (localisationPath base)
+            -- N.b. order is very significant. The key that appears in the first file in lexical[1]
+            -- order is the one that sets the translation, subsequent ones are redundant.
+            --
+            -- [1]: presumably, at any rate, since this has not been tested in depth
+            locFiles <- (sort . pickCSVs) <$> listDirectory (localisationPath base)
 
-        note [iTrim|found ${ length locFiles } localisation files.|]
+            finishConsoleRegion region $ regionOpener
+                <> [i| found ${ length locFiles } localisation files.|]
 
-        for locFiles $ \path -> do
-            contents <- fileContents $ localisationFile base path
-            case runParser localisations path contents of
-                Left errs -> do
-                    note [iTrim|
-Parsing of one localisation file failed, skipping it:
-${ errorBundlePretty errs }
-|]
-                    pure mempty
+            forConcurrently locFiles $ \path -> do
+                contents <- fileContents $ localisationFile base path
+                case runParser localisations path contents of
+                    Left errs -> do
+                        note [iTrim|
+    Parsing of one localisation file failed, skipping it:
+    ${ errorBundlePretty errs }
+    |]
+                        pure mempty
 
-                Right keys -> pure keys
+                    Right keys -> pure keys
 
     note [iTrim|Found ${ HashMap.size localisation } localisation entries.|]
 
