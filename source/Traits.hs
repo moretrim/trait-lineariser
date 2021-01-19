@@ -17,7 +17,6 @@ import Control.Applicative.Permutations            (runPermutation, toPermutatio
 import Control.Monad.Combinators.NonEmpty          (some)
 import Control.Lens hiding                         (noneOf)
 
-import Data.Functor
 import Data.Functor.Compose
 import Data.Functor.Classes
 import Data.Foldable
@@ -26,102 +25,17 @@ import Data.List.NonEmpty                          (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.HashSet as HashSet
 
-import Data.Void
 import Data.Char
 import Data.String.Here.Interpolated
 import Data.Text                                   (Text)
 import qualified Data.Text as Text
---import qualified Data.Text.IO as Text
 
 import Text.Megaparsec hiding                      (some)
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as Lex
 
 import Types
-
-type Parser = Parsec Void Text
-
----------------------------------
--- Victoria 2 specific parsing --
----------------------------------
-
--- Lexing --
-
-lineComment :: Parser Text
-lineComment = Text.cons <$> char '#' <*> takeWhileP (Just "comment character") (/= '\n')
-
--- | Lax whitespace, i.e. also consumes comments.
-ws :: Parser ()
-ws = Lex.space space1 (void lineComment) {- no block comments #-} empty
-
--- | Strict whitespace, does not consume comments.
-ws' :: Parser ()
-ws' = Lex.space space1 {- no comments of any knid #-} empty empty
-
--- Convention: strict lexers (that rely on `ws'`) are quoted.
-
-lexeme, lexeme' :: Parser item -> Parser item
-lexeme  = Lex.lexeme ws
-lexeme' = Lex.lexeme ws'
-
-symbol, symbol' :: Text -> Parser Text
-symbol  = Lex.symbol ws
-symbol' = Lex.symbol ws'
-
--- Parsing --
-
-identifier, quotedIdentifier, unquotedIdentifier :: Parser Identifier
-
-identifier = quotedIdentifier <|> unquotedIdentifier
-
-quotedIdentifier = parser <?> descr
-  where
-    parser = fmap QuotedIdentifier . lexeme . between quote quote $
-        takeWhile1P (Just "quoted identifier character") (/= '"')
-    descr = "a quoted identifer (e.g. `\"a quoted identifier\"`)"
-    quote = char '"'
-
-unquotedIdentifier = parser <?> descr
-  where
-    parser = fmap UnquotedIdentifier . lexeme $
-        takeWhile1P (Just "identifier character") validIdentifierChar
-    descr = "an unquoted identifier (e.g. `unquoted-identifier`)"
-    validIdentifierChar c = not (isSpace c) && c `notElem` ("\"#={};,()!&" :: String)
-
--- | For intermingling parse results with original comments.
-data Interspersed item
-    = Interspersed item
-    | Comment Text -- ^ Raw comment, be careful when splicing back
-    deriving stock (Show, Read, Eq, Ord, Generic)
-makePrisms ''Interspersed
-
--- | Parse an item or a comment.
-commented' :: Parser item -> Parser (Interspersed item)
-commented' item = try (lexeme' $ Comment <$> lineComment) <|> (Interspersed <$> item)
-
--- | Parse items interspersed with comments, preserving the comments. NOTE: this functionality is
--- limited.
-many' :: Parser item -> Parser [Interspersed item]
-many' = many . commented'
-
--- | `{ body }`
-block :: Parser body -> Parser body
-block = between (symbol "{") (symbol "}")
-
--- | `key = value` pair, where key is an identifier and value will be parsed as raw as possible.
-identifierPair :: Parser (Identifier, Text)
-identifierPair = do
-    key <- identifier
-    symbol "="
-    value <- takeWhile1P (Just "non-space character") (not . isSpace)
-    optional ws
-    pure $ (key, value)
-
--- | `key = { body }`
-entry :: Text -> Parser body -> Parser body
-entry key body = sectionKey *> symbol "=" *> block body
-  where
-    sectionKey = lexeme (string' key) <?> [i|entry key ‘${ Text.unpack key }’|]
+import Parsing
 
 ------------------------
 -- Trait file parsing --
@@ -168,12 +82,12 @@ deriving instance Eq   (f Trait) => Eq   (Traits f)
 deriving instance Ord  (f Trait) => Ord  (Traits f)
 
 -- | Compute localisation keys.
-traitsLocalisationKeys :: Traits NonEmpty -> Keys
-traitsLocalisationKeys ts = foldMap traitNames [ _traitsPersonalities ts
-                                               , _traitsBackgrounds ts
-                                               ]
+traitsLocalisationKeys :: Traits NonEmpty -> (OrderedKeys, OrderedKeys)
+traitsLocalisationKeys ts = over each traitNames ( _traitsPersonalities ts
+                                                 , _traitsBackgrounds ts
+                                                 )
   where
-    traitNames = HashSet.fromList . map _traitName . toList
+    traitNames = fmap (unquote . _traitName)
 
 -- | `common/traits.txt` structure, parsed into a `Traits`.
 traitsStructure :: Parser (Traits NonEmpty)
@@ -184,13 +98,13 @@ traitsStructure = do
 
         (,) <$> toPermutation
                 (
-                    entry "personality" $ do
+                    scriptEntry "personality" $ do
                         (,) <$> nullTrait "personality" "no_personality" <*> traits "personality"
                 )
 
             <*> toPermutation
                 (
-                    entry "background" $ do
+                    scriptEntry "background" $ do
                         (,) <$> nullTrait "background" "no_background" <*> traits "background"
                 )
 
@@ -205,7 +119,7 @@ traitsStructure = do
 
   where
     nullTrait kind key =
-        (Trait <$> pure (UnquotedIdentifier key) <*> entry key (many' modifier)) <?> descr
+        (Trait <$> pure (UnquotedIdentifier key) <*> scriptEntry key (many' modifier)) <?> descr
       where
         key'  = Text.unpack key
         kind' = Text.unpack kind

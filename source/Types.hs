@@ -1,18 +1,23 @@
 module Types
-    ( Key
-    , Keys
+    ( Key, OrderedKeys
+    , Translation, Translations, each', each''
+    , Entry
+    , Localisation, OrderedLocalisation
     , Identifier(..)
+        , unquote
         , identifierProduct
     ) where
 
-import GHC.Generics  (Generic)
+import GHC.Generics        (Generic)
 
 import Control.Lens
 
-import Data.Hashable (Hashable)
-import Data.HashSet  (HashSet)
+import Data.List.NonEmpty  (NonEmpty)
+import Data.Hashable       (Hashable)
+import Data.HashSet        (HashSet)
+import Data.HashMap.Strict (HashMap)
 
-import Data.Text     (Text)
+import Data.Text           (Text)
 
 data Identifier
     = QuotedIdentifier Text -- ^ Contents only, quotation marks are implied
@@ -21,14 +26,15 @@ data Identifier
     deriving anyclass (Hashable)
 makePrisms ''Identifier
 
-raw :: Identifier -> Text
-raw (QuotedIdentifier contents)     = contents
-raw (UnquotedIdentifier identifier) = identifier
+-- | Requires careful use, as it is unhygienic! Unquoted identifiers may not be valid script.
+unquote :: Identifier -> Text
+unquote (QuotedIdentifier contents)     = contents
+unquote (UnquotedIdentifier identifier) = identifier
 
 instance Semigroup Identifier where
-    UnquotedIdentifier lhs <> UnquotedIdentifier rhs = UnquotedIdentifier $ lhs     <> rhs
-    lhs                    <> QuotedIdentifier rhs   = QuotedIdentifier   $ raw lhs <> rhs
-    QuotedIdentifier lhs   <> rhs                    = QuotedIdentifier   $ lhs     <> raw rhs
+    UnquotedIdentifier lhs <> UnquotedIdentifier rhs = UnquotedIdentifier $ lhs         <> rhs
+    lhs                    <> QuotedIdentifier rhs   = QuotedIdentifier   $ unquote lhs <> rhs
+    QuotedIdentifier lhs   <> rhs                    = QuotedIdentifier   $ lhs         <> unquote rhs
 
 instance Monoid Identifier where
     mempty = QuotedIdentifier ""
@@ -37,8 +43,101 @@ instance Monoid Identifier where
 identifierProduct :: Identifier -> Identifier -> Identifier
 identifierProduct lhs rhs = lhs <> UnquotedIdentifier "x" <> rhs
 
--- | Localisation key.
-type Key = Identifier
+-- | Localisation key. Not to be confused with script-side identifiers, They are always unquoted and
+-- raw.
+type Key = Text
 
--- | Set of localisation keys.
-type Keys = HashSet Identifier
+-- | Ordered set of localisation keys.
+type OrderedKeys = NonEmpty Key
+
+-- | Not everything is translated into every language, especially with mods.
+type Translation = Maybe Text
+
+-- | The translation entries expected of this era of PDS games. We have to be lenient because
+-- malformed localisation files are the norm rather than the exception, and the game itself accepts
+-- them.
+type Translations =
+    ( Translation -- ^ English
+    , Translation -- ^ French
+    , Translation -- ^ German
+    , Translation -- ^ Polish
+    , Translation -- ^ Spanish
+    , Translation -- ^ Italian
+    , Translation -- ^ Swedish
+    , Translation -- ^ Czech
+    , Translation -- ^ Hungarian
+    , Translation -- ^ Dutch
+    , Translation -- ^ Portuguese
+    , Translation -- ^ Russian
+    , Translation -- ^ Finnish
+    )
+
+-- | Control.Lens.Tuple.each only goes up to 10, which is just our luck. In any case there’s only so
+-- much one can do with tuples, too.
+each' :: Translations -> [Translation]
+each' ( english
+      , french
+      , german
+      , polish
+      , spanish
+      , italian
+      , swedish
+      , czech
+      , hungarian
+      , dutch
+      , portuguese
+      , russian
+      , finnish
+      ) = [ english
+          , french
+          , german
+          , polish
+          , spanish
+          , italian
+          , swedish
+          , czech
+          , hungarian
+          , dutch
+          , portuguese
+          , russian
+          , finnish
+          ]
+
+-- | See each'.
+each'' :: [Translation] -> Translations
+each'' [ english
+       , french
+       , german
+       , polish
+       , spanish
+       , italian
+       , swedish
+       , czech
+       , hungarian
+       , dutch
+       , portuguese
+       , russian
+       , finnish
+       ] = ( english
+           , french
+           , german
+           , polish
+           , spanish
+           , italian
+           , swedish
+           , czech
+           , hungarian
+           , dutch
+           , portuguese
+           , russian
+           , finnish
+           )
+
+-- | Localisation entry: a key with its associated translations.
+type Entry = (Key, Translations)
+
+-- | Localisation data: keys that map to translations. Note that the keys are stored unquoted.
+type Localisation = HashMap Text Translations
+
+-- | Ordered localisation data.
+type OrderedLocalisation = [Entry]
