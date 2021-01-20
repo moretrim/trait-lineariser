@@ -1,3 +1,11 @@
+{-|
+
+Copyright: © 2021 moretrim
+Licence:   GPL-3.0-only
+
+Localisation parsing & linearising.
+
+|-}
 module Localisation
     ( localisations
     , lineariseLocalisation

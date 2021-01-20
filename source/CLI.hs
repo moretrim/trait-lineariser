@@ -1,3 +1,11 @@
+{-|
+
+Copyright: © 2021 moretrim
+Licence:   GPL-3.0-only
+
+CLI implementation & entry point.
+
+|-}
 module Main where
 
 import Prelude hiding                        (getContents, readFile, writeFile)

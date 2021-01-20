@@ -1,3 +1,11 @@
+{-|
+
+Copyright: © 2021 moretrim
+Licence:   GPL-3.0-only
+
+Trait file parsing & linearising.
+
+|-}
 module Traits
     ( Parser
     , Trait(..), traitName, traitMods

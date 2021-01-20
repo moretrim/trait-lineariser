@@ -1,3 +1,11 @@
+{-|
+
+Copyright: © 2021 moretrim
+Licence:   GPL-3.0-only
+
+Common types.
+
+|-}
 module Types
     ( Key, OrderedKeys
     , Translation, Translations, each', each''
