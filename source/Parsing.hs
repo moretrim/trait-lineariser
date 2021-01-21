@@ -11,7 +11,7 @@ module Parsing
     , lineComment, ws, ws'
     , lexeme, lexeme' , symbol, symbol'
     , identifier
-    , Interspersed(..), _Interspersed, _Comment, commented', many'
+    , commented', many'
     , block
     , identifierPair
     , scriptEntry
@@ -37,9 +37,9 @@ import Types
 
 type Parser = Parsec Void Text
 
----------------------------------
--- Victoria 2 specific parsing --
----------------------------------
+----------------------------------
+-- Victoria II specific parsing --
+----------------------------------
 
 -- Lexing --
 
@@ -83,13 +83,6 @@ unquotedIdentifier = parser <?> descr
         takeWhile1P (Just "identifier character") validIdentifierChar
     descr = "an unquoted identifier (e.g. `unquoted-identifier`)"
     validIdentifierChar c = not (isSpace c) && c `notElem` ("\"#={};,()!&" :: String)
-
--- | For intermingling parse results with original comments.
-data Interspersed item
-    = Interspersed item
-    | Comment Text -- ^ Raw comment, be careful when splicing back
-    deriving stock (Show, Read, Eq, Ord, Generic)
-makePrisms ''Interspersed
 
 -- | Parse an item or a comment.
 commented' :: Parser item -> Parser (Interspersed item)

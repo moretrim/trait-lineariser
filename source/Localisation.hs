@@ -205,14 +205,14 @@ localisations = generatedFile <|> do
         -- skip generated file
         generatedFile = mempty <$ string localisationHeader
 
--- | Compute the product localisation of combining personalities and backgrounds into linear trait
--- pairs. Reports orphan keys (i.e. those that had no localisation entries) on the side.
+-- | Compute the localisation of combining personalities and backgrounds into linear trait pairs.
+-- Reports orphan keys (i.e. those that had no localisation entries) on the side.
 lineariseLocalisation :: Localisation
                       -> OrderedKeys
                       -> OrderedKeys
                       -> BaseGameLocalisation
                       -> (HashSet.HashSet Key, OrderedLocalisation)
-lineariseLocalisation localisation' personalities backgrounds baseGame = (orphans, pairLocalisation)
+lineariseLocalisation localisation' personalities backgrounds baseGame = (orphans, productEntries)
   where
     -- sprinkle base game localisation
     localisation = case baseGame of
@@ -229,20 +229,21 @@ lineariseLocalisation localisation' personalities backgrounds baseGame = (orphan
     -- maintain original trait order, but stick to what can be translated
     translatable = NonEmpty.filter (`HashMap.member` localisation)
 
-    pairLocalisation =
+    productEntries =
         localisationHeader'
         <> localisationPreamble'
-        <> toList (translationProduct <$> translatable personalities <*> translatable backgrounds)
+        <> toList (productEntry <$> translatable personalities <*> translatable backgrounds)
 
     concatTraits personality background =
-        Hardcoded.productLocalisation <$> personality <*> background
+        Hardcoded.productTranslation <$> personality <*> background
 
-    translationProduct personality background = (personality <> "x" <> background, translation)
+    productEntry personality background =
+        (Hardcoded.productKey personality background, translations)
       where
-        -- the following is safe as long as we stuck to translatable keys, see above
+        -- the following is safe as long as we stick to translatable keys, see above
         personalityTranslations = each' . fromJust $ HashMap.lookup personality localisation
         backgroundTranslations  = each' . fromJust $ HashMap.lookup background  localisation
-        translation = each'' $ zipWith concatTraits personalityTranslations backgroundTranslations
+        translations = each'' $ zipWith concatTraits personalityTranslations backgroundTranslations
 
 formatEntry :: Entry -> Text
 formatEntry (key, translations) = key <> ";" <> translated

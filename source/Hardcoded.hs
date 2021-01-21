@@ -12,9 +12,26 @@ module Hardcoded where
 import Data.Text                                   (Text)
 import qualified Data.Text as Text
 
--- | The product of one personality localisation with one background localisation.
-productLocalisation :: Text -> Text -> Text
-productLocalisation personality background = personality <> ", " <> Text.toLower background
+import Types
+
+-- | The product of one personality identifier with one background identifier.
+productIdentifier :: Identifier -> Identifier -> Identifier
+productIdentifier lhs rhs = lhs <> UnquotedIdentifier "x" <> rhs
+
+-- | Same as `productIdentifier`, when working on keys.
+productKey :: Key -> Key -> Key
+productKey lhs rhs = lhs <> "x" <> rhs
+
+-- | How the body of a product trait should be organised before displaying.
+productTraitTemplate :: [Interspersed item] -> [Interspersed item] -> [Interspersed item]
+productTraitTemplate personality background = personality <> [separator] <> background
+  where
+    -- | marks the separation between personality mods and background mods
+    separator = Comment "####"
+
+-- | The product of one personality translation with one background translation.
+productTranslation :: Text -> Text -> Text
+productTranslation personality background = personality <> ", " <> Text.toLower background
 
 outputBase :: FilePath
 outputBase = "out"

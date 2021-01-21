@@ -2,7 +2,7 @@ cabal-version: 2.4
 
 name:         trait-lineariser
 version:      0.1.0
-synopsis:     An executable that can linearise a traits.txt file from a Victoria 2 mod
+synopsis:     An executable that can linearise a traits.txt file from a Victoria II mod
 -- description:
 -- bug-reports:
 license:      GPL-3.0-only
@@ -81,7 +81,7 @@ executable trait-lineariser
     import:         properties
     hs-source-dirs: source
     main-is:        CLI.hs
-    other-modules:  Hardcoded, Types, Parsing, Traits, Localisation.Base, Localisation
+    other-modules:  Types, Hardcoded, Parsing, Traits, Localisation.Base, Localisation
     default-extensions: ImplicitParams
     build-depends: async == 2.*,
                    concurrent-output == 1.*,

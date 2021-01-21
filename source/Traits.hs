@@ -42,6 +42,7 @@ import Text.Megaparsec hiding                      (some)
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as Lex
 
+import qualified Hardcoded
 import Types
 import Parsing
 
@@ -156,12 +157,11 @@ lineariseTraits traits = traits
     }
       where
         traitProduct personality background = Trait
-            { _traitName = _traitName personality `identifierProduct` _traitName background
-            , _traitMods = _traitMods personality <> [separator] <> _traitMods background
+            { _traitName =
+                _traitName personality `Hardcoded.productIdentifier` _traitName background
+            , _traitMods =
+                Hardcoded.productTraitTemplate (_traitMods personality) (_traitMods background)
             }
-              where
-                -- | marks the separation between personality mods and background mods
-                separator = Comment "####"
 
         unitPersonality = Trait
             { _traitName = UnquotedIdentifier "unit_personality"

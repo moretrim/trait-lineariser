@@ -8,13 +8,13 @@ Common types.
 |-}
 module Types
     ( BaseGameLocalisation(..)
+    , Interspersed(..), _Interspersed, _Comment
     , Key, OrderedKeys
     , Translation, Translations, each', each''
     , Entry
     , Localisation, OrderedLocalisation
     , Identifier(..)
         , unquote
-        , identifierProduct
     ) where
 
 import GHC.Generics        (Generic)
@@ -27,11 +27,31 @@ import Data.HashMap.Strict (HashMap)
 
 import Data.Text           (Text)
 
+---------------------
+-- Program options --
+---------------------
+
 data BaseGameLocalisation
     = IncludeBaseGame
     | NoIncludeBaseGame
     deriving stock (Show, Read, Eq, Ord, Generic)
 
+---------------------
+-- General parsing --
+---------------------
+
+-- | For intermingling parse results with original comments.
+data Interspersed item
+    = Interspersed item
+    | Comment Text -- ^ Raw comment, be careful when splicing back
+    deriving stock (Show, Read, Eq, Ord, Generic)
+makePrisms ''Interspersed
+
+------------
+-- Script --
+------------
+
+-- | Script-side identifier.
 data Identifier
     = QuotedIdentifier Text -- ^ Contents only, quotation marks are implied
     | UnquotedIdentifier Text
@@ -52,9 +72,9 @@ instance Semigroup Identifier where
 instance Monoid Identifier where
     mempty = QuotedIdentifier ""
 
--- | Compute the canonical product of two identifiers.
-identifierProduct :: Identifier -> Identifier -> Identifier
-identifierProduct lhs rhs = lhs <> UnquotedIdentifier "x" <> rhs
+------------------
+-- Localisation --
+------------------
 
 -- | Localisation key. Not to be confused with script-side identifiers, They are always unquoted and
 -- raw.
