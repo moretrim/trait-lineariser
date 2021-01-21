@@ -12,7 +12,7 @@ module Localisation
     , formatLocalisation
     ) where
 
-import GHC.Exts (IsString(..))
+import GHC.Exts                                    (IsString(..))
 import GHC.Generics                                (Generic)
 
 import Control.Lens hiding                         (noneOf)
@@ -34,27 +34,10 @@ import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as Lex
 
+import qualified Hardcoded
 import Types
 import Parsing
-
-instance IsString Translation where
-    fromString = pure . fromString
-
--- | No translation.
-nt :: Translation
-nt = Nothing
-
-nt' :: Translations
-nt' = (nt, nt, nt, nt, nt, nt, nt, nt, nt, nt, nt, nt, nt)
-
--- | Unmodded-style translation: English, French, German, Spanish
-t :: (Translation, Translation, Translation, Translation) -> Translations
-t (english, french, german, spanish) =
-    (english, french, german, nt, spanish, nt, nt, nt, nt, nt, nt, nt, nt)
-
--- | Pseudo-translation that is invisible in the UI.
-hide :: Translations
-hide = ("\ESC", "\ESC", "\ESC", "\ESC", "\ESC", "\ESC", "\ESC", "\ESC", "\ESC", "\ESC", "\ESC", "\ESC", "\ESC")
+import Localisation.Base
 
 localisationHeader' :: [Entry]
 localisationHeader' =
@@ -227,9 +210,15 @@ localisations = generatedFile <|> do
 lineariseLocalisation :: Localisation
                       -> OrderedKeys
                       -> OrderedKeys
+                      -> BaseGameLocalisation
                       -> (HashSet.HashSet Key, OrderedLocalisation)
-lineariseLocalisation localisation personalities backgrounds = (orphans, pairLocalisation)
+lineariseLocalisation localisation' personalities backgrounds baseGame = (orphans, pairLocalisation)
   where
+    -- sprinkle base game localisation
+    localisation = case baseGame of
+        IncludeBaseGame   -> HashMap.union localisation' baseLocalisation
+        NoIncludeBaseGame -> localisation'
+
     personalities' = HashSet.toMap . HashSet.fromList $ toList personalities
     backgrounds'   = HashSet.toMap . HashSet.fromList $ toList backgrounds
 
@@ -245,18 +234,14 @@ lineariseLocalisation localisation personalities backgrounds = (orphans, pairLoc
         <> localisationPreamble'
         <> toList (translationProduct <$> translatable personalities <*> translatable backgrounds)
 
+    concatTraits personality background =
+        Hardcoded.productLocalisation <$> personality <*> background
+
     translationProduct personality background = (personality <> "x" <> background, translation)
       where
         -- the following is safe as long as we stuck to translatable keys, see above
         personalityTranslations = each' . fromJust $ HashMap.lookup personality localisation
         backgroundTranslations  = each' . fromJust $ HashMap.lookup background  localisation
-
-        -- TODO hardcoded
-        concatTraits personality' background' = do
-            personality <- personality'
-            background  <- background'
-            pure $ personality <> ", " <> Text.toLower background
-
         translation = each'' $ zipWith concatTraits personalityTranslations backgroundTranslations
 
 formatEntry :: Entry -> Text

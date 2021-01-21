@@ -35,18 +35,22 @@ import Data.Encoding.CP1252
 import Text.Megaparsec
 
 import System.Exit                           (exitFailure)
-import System.FilePath                       ((</>), takeExtension)
-import System.Directory                      (listDirectory)
+import System.FilePath                       ((</>), takeFileName, takeExtension)
+import System.Directory                      (doesPathExist, listDirectory, renameDirectory)
+import System.IO.Temp                        (withTempDirectory)
 import System.IO.Encoding                    (getContents, readFile, writeFile)
 
 import qualified Options.Applicative as Args
+import qualified Options.Applicative.Help as Args hiding (fullDesc)
 
 import Control.Concurrent.Async
 import System.Console.Concurrent
 import System.Console.Regions
 
-import Types -- TODO remove
+import qualified Hardcoded
+import Types
 import Traits
+import Localisation.Base
 import Localisation
 
 noteBriefly :: String -> IO ()
@@ -62,67 +66,149 @@ noteFailure :: String -> IO noreturn
 noteFailure message = note message *> exitFailure
 
 -- | Read a game or mod file. Uses the CP1252 encoding that Victoria II expects.
-fileContents :: FilePath -> IO Text
-fileContents path = do
+fileContents :: FilePath -> IO (Either DecodingException Text)
+fileContents path = handle decodingError $ do
     let ?enc = CP1252
     -- N.b., System.IO.Encoding functions report decoding errors as pure exceptions
-    --          vvvvvvvvvvvv
-    unicode <- (evaluate =<< readFile path) `catch` decodingError
-    pure $! Text.pack unicode
+    --         vvvvvvvv
+    unicode <- evaluate =<< readFile path
+    pure $ pure $ Text.pack unicode
 
-      where
-        decodingError :: DecodingException -> IO String
-        decodingError err = do
-            note [iTrim|
+  where
+    decodingError :: DecodingException -> IO (Either DecodingException Text)
+    decodingError err = pure $ Left err
+
+localisationContents :: BaseGameLocalisation -> FilePath -> FilePath -> IO Text
+localisationContents baseGameLocalisation base path = do
+    contents <- fileContents path
+    case contents of
+        Left err -> do
+            -- see `Localisation.Base`
+            if takeFileName base == "Victoria 2"
+                && ("localisation" </> "text.csv") `isSuffixOf` path
+                then if baseGameLocalisation == IncludeBaseGame
+                         then note [iTrim|
+Decoding of localisation file failed:
+    ‘${ path }’: ${err}
+But it looks like it is base game ‘text.csv’ file, which translations are already incorporated into
+this program. Continuing.
+|]
+                         else note [iTrim|
+Decoding of localisation file failed:
+    ‘${ path }’: ${err}
+But it looks like it is base game ‘text.csv’ file. If you want to use base game localisation,
+consider using `--include-base-game` (refer to `--help`). Continuing after skipping the file.
+|]
+                else note [iTrim|
 Decoding of one localisation file failed, skipping it:
     ‘${ path }’: ${err}
 |]
-            -- We get away with this because the empty string is valid and corresponds to empty
-            -- localisation with no entries.
+
+            -- We get away with this because an empty localisation file is valid and corresponds
+            -- to no entry at all.
             pure ""
 
-parseArgs :: IO (Maybe FilePath, [FilePath])
+        Right decoded -> pure decoded
+
+parseArgs :: IO (FilePath, [FilePath], BaseGameLocalisation)
 parseArgs = Args.execParser $ Args.info (Args.helper <*> args) desc
   where
-    args = (,) <$> modPath <*> extraLoc
+    args = (,,) <$> modPath <*> extraLoc <*> (includeBaseGame <|> noIncludeBaseGame)
 
-    modPath = optional . Args.argument Args.str $
-        Args.help [iTrim|
-            Base path of the mod of interest. From this path, the traits file is expected to be
-            located at `common/traits.txt`. (If the mod is not yet providing a traits file, you
-            should copy over the unmodded traits file.)
+    paragraphs       = Args.unChunk . Args.vcatChunks
+    separate   items = fmap (\item -> para item `cat` blank) items
+      where
+        cat = Args.chunked (Args..$.)
 
-            Additionally, localisation files are expected to be located in the `location`
-            subdirectory. Localisation keys for each of the trait are required to be present there
-            in order for the linearised localisation to be produced. If this is not already the
-            case, consider temporarily copying unmodded localisation files.
+    help     = Args.helpDoc     . paragraphs . separate
+    progDesc = Args.progDescDoc . paragraphs
 
-            The current working directory is assumed if the path is not provided. All files will be
-            assumed to be using the WINDOWS-1252 encoding that the game expects.
-            |]
+    para  = Args.paragraph
+    blank :: (Applicative f, Monoid a) => f a
+    blank = pure mempty -- ^ blank line acting as separator
+
+    modPath = Args.strArgument $
+        help [ [iTrim|
+Base path to the mod of interest. Contents at that location should conform to the usual structure
+for mod files, so that the traits file (`common/traits.txt`) as well as localisation information can
+be found. (If the mod is not yet providing a traits file, you should copy over the unmodded traits
+file.)
+|]
+             , [iTrim|
+The current working directory is assumed if the path is not provided. All files will be assumed to
+be using the WINDOWS-1252 encoding that the game expects.
+|]
+             ]
         <> Args.metavar "PATH/TO/MOD"
+        <> Args.value "."
 
     extraLoc = Args.many $ Args.strOption $
         Args.long "extra-localisation"
         <> Args.short 'x'
-        <> Args.help [iTrim|
-            Extra base paths. They will be used for the purpose of collating localisation. It can be
-            useful to include the path to the game installation this way.
-            |]
+        <> help [ [iTrim|
+Extra base paths. The translations they contain will be collated for the purpose of computing the
+final localisation file.
+|]
+                , [iTrim|
+Order is significant: entries that come from a path that is passed in early are favoured over those
+that come after.
+|]
+                , [iTrim|
+You do NOT need to pass in the path to the game. Base game translations are already incorporated
+into this program. (But also see: --no-include-base-game.)
+|]
+                ]
         <> Args.metavar "another/base/path"
+
+    includeBaseGame = Args.flag IncludeBaseGame IncludeBaseGame $
+        Args.long "include-base-game"
+        <> help [ [iTrim|
+Include the base game translations when computing the localisation file. This is the default
+behaviour because base game file `localisation/text.csv` is tricky to decode.
+|]
+                , [iTrim|
+Base game translations are always considered last so that any other localisation you pass to the
+program through `--extra-localisation` will be preferred.
+|]
+                , [iTrim|
+(This has no effect on the computed traits, only on their translations.)
+|]
+                ]
+
+    noIncludeBaseGame = Args.flag' NoIncludeBaseGame $
+        Args.long "no-include-base-game"
+        <> help [ [iTrim|
+Do NOT include the base game translations when computing the localisation file. This suppresses the
+default behaviour, see `--include-base-game`.
+|]
+                ]
 
     desc =
         Args.fullDesc
-        <> Args.progDesc [iTrim|
-            Linearise the personalities and backgrounds that generals and admirals can have. Output
-            consists of a `traits.txt` file containing linearised traits, and a `traits.csv` file
-            containing localisation keys. Both files will be output to the current working
-            directory.
-            |]
+        <> progDesc [ blank
+                    , para [iTrim|
+Linearise the personalities and backgrounds that generals and admirals can have. All output is
+written to the ‘${ Hardcoded.outputBase }’ directory as long as it doesn’t exist (otherwise the
+process is aborted), and consists of the following:
+|]
+                    , blank
+                    , para [iTrim|
+- a `traits.txt` file containing linearised traits
+|]
+                    , para [iTrim|
+- a `traits.csv` file containing localisation entries
+|]
+                    , blank
+                    , para [iTrim|
+Translations in the localisation file are collated from each of the base paths passed as arguments.
+As such a localisation entry for each trait is required to be present if you want complete a
+linearised localisation to be produced. Refer to the `--extra-localisation` option.
+|]
+                    ]
 
 main :: IO ()
 main = displayConsoleRegions $ do
-    (modPath, extraPaths) <- over _1 (fromMaybe ".") <$> parseArgs
+    (modPath, extraPaths, baseGameLocalisation) <- parseArgs
 
     let traitsPath = modPath </> "common" </> "traits.txt"
         -- N.b. order is significant, see below.
@@ -131,7 +217,17 @@ main = displayConsoleRegions $ do
         localisationPath base      = base </> "localisation"
         localisationFile base path = localisationPath base </> path
 
-    traitsContent <- fileContents traitsPath
+    let badTraits err = noteFailure [iTrim|
+Decoding of traits file ‘${traitsPath}’ failed, aborting:
+    ${ err }
+|]
+    traitsContent <- either badTraits pure =<< fileContents traitsPath
+
+    outputUnavailable <- doesPathExist Hardcoded.outputBase
+    when outputUnavailable $ do
+        noteFailure [iTrim|
+Output destination ‘${Hardcoded.outputBase}’ already exists, aborting.
+|]
 
     when (lineariserHeader `Text.isPrefixOf` traitsContent) $ do
         noteFailure [iTrim|
@@ -187,25 +283,39 @@ already linearised trait file?)
                 <> [i| found ${ length locFiles } localisation files.|]
 
             forConcurrently locFiles $ \path -> do
-                contents <- fileContents $ localisationFile base path
+                contents <-
+                    localisationContents baseGameLocalisation base $ localisationFile base path
                 case runParser localisations path contents of
                     Left errs -> do
                         note [iTrim|
-    Parsing of one localisation file failed, skipping it:
+Parsing of one localisation file failed, skipping it:
     ${ errorBundlePretty errs }
-    |]
+|]
                         pure mempty
 
                     Right keys -> pure keys
 
-    note [iTrim|Found ${ HashMap.size localisation } localisation entries.|]
+    case baseGameLocalisation of
+        IncludeBaseGame   -> note [iTrim|
+Found ${ HashMap.size localisation } localisation entries, and adding to it ${ HashMap.size baseLocalisation } base game entries.
+|]
+        NoIncludeBaseGame -> note [i|Found ${ HashMap.size localisation } localisation entries.|]
 
-    let (orphans, entries) = lineariseLocalisation localisation personalities backgrounds
+    let (orphans, entries) =
+            lineariseLocalisation localisation personalities backgrounds baseGameLocalisation
 
-    note [iTrim|The following could not be translated:
+    when (not $ null orphans) $ do
+        note [iTrim|
+The following traits were missing a translation:
     ${ Text.unpack . Text.intercalate ", " $ toList orphans }
+(If you did not expect this, you might want to use `--help` and read about `--extra-localisation`
+and/or `--include-base-game`.)
 |]
 
-    let ?enc = CP1252
-    writeFile "traits.txt" . Text.unpack . formatTraits       $ lineariseTraits traits
-    writeFile "traits.csv" . Text.unpack . formatLocalisation $ entries
+    withTempDirectory "." Hardcoded.outputBase $ \outputPath -> do
+        let write path = let ?enc = CP1252 in writeFile (outputPath </> path) . Text.unpack
+        write "traits.txt" . formatTraits       $ lineariseTraits traits
+        write "traits.csv" . formatLocalisation $ entries
+        renameDirectory outputPath Hardcoded.outputBase
+
+    note [i|Done!|]

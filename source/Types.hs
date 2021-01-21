@@ -7,7 +7,8 @@ Common types.
 
 |-}
 module Types
-    ( Key, OrderedKeys
+    ( BaseGameLocalisation(..)
+    , Key, OrderedKeys
     , Translation, Translations, each', each''
     , Entry
     , Localisation, OrderedLocalisation
@@ -26,6 +27,11 @@ import Data.HashSet        (HashSet)
 import Data.HashMap.Strict (HashMap)
 
 import Data.Text           (Text)
+
+data BaseGameLocalisation
+    = IncludeBaseGame
+    | NoIncludeBaseGame
+    deriving stock (Show, Read, Eq, Ord, Generic)
 
 data Identifier
     = QuotedIdentifier Text -- ^ Contents only, quotation marks are implied
