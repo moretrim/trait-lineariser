@@ -24,9 +24,8 @@ import qualified Data.HashMap.Strict as HashMap
 
 import Data.String.Here.Interpolated
 import Data.String.Here.Uninterpolated
-import Data.Text                             (Text)
-import qualified Data.Text.IO as Text
 import qualified Data.Text as Text
+import qualified Data.Text.IO as Text
 
 import Data.Encoding.Exception               (DecodingException)
 import Data.Encoding.UTF8

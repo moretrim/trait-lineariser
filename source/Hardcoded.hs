@@ -9,7 +9,6 @@ what is being done.
 |-}
 module Hardcoded where
 
-import Data.Text                                   (Text)
 import qualified Data.Text as Text
 
 import Types

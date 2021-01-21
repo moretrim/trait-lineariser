@@ -29,13 +29,11 @@ import Data.Functor.Compose
 import Data.Functor.Classes
 import Data.Foldable
 
-import Data.List.NonEmpty                          (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.HashSet as HashSet
 
 import Data.Char
 import Data.String.Here.Interpolated
-import Data.Text                                   (Text)
 import qualified Data.Text as Text
 
 import Text.Megaparsec hiding                      (some)

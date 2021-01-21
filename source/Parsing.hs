@@ -26,7 +26,6 @@ import Data.Functor
 import Data.Void
 import Data.Char
 import Data.String.Here.Interpolated
-import Data.Text                                   (Text)
 import qualified Data.Text as Text
 
 import Text.Megaparsec hiding                      (some)

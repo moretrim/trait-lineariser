@@ -15,6 +15,10 @@ module Types
     , Localisation, OrderedLocalisation
     , Identifier(..)
         , unquote
+
+    -- Convenience re-exports
+    , module Data.List.NonEmpty
+    , module Data.Text
     ) where
 
 import GHC.Generics        (Generic)

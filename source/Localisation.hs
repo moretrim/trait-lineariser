@@ -27,7 +27,6 @@ import Data.Foldable
 import Data.Maybe
 
 import Data.String.Here.Interpolated
-import Data.Text                                   (Text)
 import qualified Data.Text as Text
 
 import Text.Megaparsec
