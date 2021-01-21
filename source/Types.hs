@@ -23,7 +23,6 @@ import Control.Lens
 
 import Data.List.NonEmpty  (NonEmpty)
 import Data.Hashable       (Hashable)
-import Data.HashSet        (HashSet)
 import Data.HashMap.Strict (HashMap)
 
 import Data.Text           (Text)
@@ -146,6 +145,8 @@ each'' [ english
            , russian
            , finnish
            )
+each'' _ =
+    error "Types.each'': non-exhaustive pattern match, is the argument iso to `Translations`?"
 
 -- | Localisation entry: a key with its associated translations.
 type Entry = (Key, Translations)

@@ -41,18 +41,21 @@ common properties
                         DataKinds, TypeOperators,
                         GADTs
 
-    ghc-options:        -fwarn-incomplete-record-updates
-
     -- warnings
 
-    if flag(review)
-        ghc-options:    -Wall -fwarn-tabs -fwarn-incomplete-uni-patterns
-    elif flag(release)
-        ghc-options:
-    else -- The default is to build for quick development
-        ghc-options:    -Wall
-                        -Wno-unused-top-binds -Wno-unused-do-bind -Wno-unused-imports
+    -- Common warnings, may be overriden by builds—put -Wall here first of all, and never in build
+    -- specific options due to Cabal’s apparent unintuive order of merged options!
+    ghc-options:        -Wall -Wno-name-shadowing
+                        -Wincomplete-record-updates
                         -Werror=unticked-promoted-constructors
+
+    if flag(review)
+        ghc-options:    -Wtabs -Wincomplete-uni-patterns
+    elif flag(release)
+        ghc-options:    -Wno-all
+                        -Wno-error=unticked-promoted-constructors
+    else -- The default is to build for quick development
+        ghc-options:    -Wno-unused-top-binds -Wno-unused-do-bind -Wno-unused-imports
 
     -- specific compilation options
 
