@@ -7,7 +7,13 @@ Things that are hardcoded, and might not need to be. Designed to be importad qua
 what is being done.
 
 |-}
-module Hardcoded where
+module Hardcoded
+    ( productIdentifier
+    , productKey
+    , productSeparator
+    , productTranslation
+    , outputBase
+    ) where
 
 import qualified Data.Text as Text
 
@@ -21,12 +27,9 @@ productIdentifier lhs rhs = lhs <> UnquotedIdentifier "x" <> rhs
 productKey :: Key -> Key -> Key
 productKey lhs rhs = lhs <> "x" <> rhs
 
--- | How the body of a product trait should be organised before displaying.
-productTraitTemplate :: [Interspersed item] -> [Interspersed item] -> [Interspersed item]
-productTraitTemplate personality background = personality <> [separator] <> background
-  where
-    -- | marks the separation between personality mods and background mods
-    separator = Comment "####"
+-- | marks the separation between personality mods and background mods
+productSeparator :: Text
+productSeparator = "####"
 
 -- | The product of one personality translation with one background translation.
 productTranslation :: Text -> Text -> Text

@@ -186,8 +186,9 @@ row = do
         --
         -- The following is from HFM:
         -- - ‘\’: FlavoursMod_events.csv
+        -- - ‘!’: 00_HPM_Misc.csv (unfinished 1.28 branch)
         -- )
-        crud = many (oneOf (";,xX< .\ETX\t\"\\" :: String)) <?> "any amount of row terminators [;,x]"
+        crud = many (oneOf (";,xX< .\ETX\t\"\\!" :: String)) <?> "any amount of row terminators [;,x]"
 
 -- | Victoria II’s localisation files take the form of simple semicolon-separated data, with no
 -- support for quoting or need for a header.
@@ -233,9 +234,6 @@ lineariseLocalisation localisation' personalities backgrounds baseGame = (orphan
         <> localisationPreamble'
         <> toList (productEntry <$> translatable personalities <*> translatable backgrounds)
 
-    concatTraits personality background =
-        Hardcoded.productTranslation <$> personality <*> background
-
     productEntry personality background =
         (Hardcoded.productKey personality background, translations)
       where
@@ -243,6 +241,9 @@ lineariseLocalisation localisation' personalities backgrounds baseGame = (orphan
         personalityTranslations = each' . fromJust $ HashMap.lookup personality localisation
         backgroundTranslations  = each' . fromJust $ HashMap.lookup background  localisation
         translations = each'' $ zipWith concatTraits personalityTranslations backgroundTranslations
+
+    concatTraits personality background =
+        Hardcoded.productTranslation <$> personality <*> background
 
 formatEntry :: Entry -> Text
 formatEntry (key, translations) = key <> ";" <> translated

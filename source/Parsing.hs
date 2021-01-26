@@ -10,10 +10,11 @@ module Parsing
     ( Parser
     , lineComment, ws, ws'
     , lexeme, lexeme' , symbol, symbol'
-    , identifier
     , commented', many'
+    , identifier
+    , decimal
     , block
-    , identifierPair
+    , numericPair
     , scriptEntry
     ) where
 
@@ -24,6 +25,7 @@ import Control.Lens
 import Data.Functor
 
 import Data.Void
+import Data.Maybe
 import Data.Char
 import Data.String.Here.Interpolated
 import qualified Data.Text as Text
@@ -65,6 +67,15 @@ symbol' = Lex.symbol ws'
 
 -- Parsing --
 
+-- | Parse an item or a comment.
+commented' :: Parser item -> Parser (Interspersed item)
+commented' item = try (lexeme' $ Comment <$> lineComment) <|> (Parsed <$> item)
+
+-- | Parse items interspersed with comments, preserving the comments. NOTE: this functionality is
+-- limited.
+many' :: Parser item -> Parser [Interspersed item]
+many' = many . commented'
+
 identifier, quotedIdentifier, unquotedIdentifier :: Parser Identifier
 
 identifier = quotedIdentifier <|> unquotedIdentifier
@@ -83,25 +94,42 @@ unquotedIdentifier = parser <?> descr
     descr = "an unquoted identifier (e.g. `unquoted-identifier`)"
     validIdentifierChar c = not (isSpace c) && c `notElem` ("\"#={};,()!&" :: String)
 
--- | Parse an item or a comment.
-commented' :: Parser item -> Parser (Interspersed item)
-commented' item = try (lexeme' $ Comment <$> lineComment) <|> (Interspersed <$> item)
+-- | Parse a PDS script numeric value.
+decimal :: Parser Decimal
+decimal = Lex.signed ws parser <?> "numeric value"
+  where
+    parser = try fractional <|> (fromIntegral <$> integral)
 
--- | Parse items interspersed with comments, preserving the comments. NOTE: this functionality is
--- limited.
-many' :: Parser item -> Parser [Interspersed item]
-many' = many . commented'
+    integral   = Lex.decimal
+    fractional = fromRational <$> ( (+) <$> whole <*> fraction )
+
+    whole    = (fromInteger . fromMaybe 0) <$> optional integral
+    fraction = fromDigits <$ symbol "." <*> takeWhile1P (Just "digit") isDigit
+
+    fromDigits = uncurry (%) . Text.foldl' tally (0, 1)
+    tally (!num, !exp) d = (10 * num + digit d, exp * 10)
+    digit '0' = 0
+    digit '1' = 1
+    digit '2' = 2
+    digit '3' = 3
+    digit '4' = 4
+    digit '5' = 5
+    digit '6' = 6
+    digit '7' = 7
+    digit '8' = 8
+    digit '9' = 9
+    digit  _  = error "Parsing.decimal.digit: non-exhaustive pattern match, was the input a digit?"
 
 -- | `{ body }`
 block :: Parser body -> Parser body
 block = between (symbol "{") (symbol "}")
 
--- | `key = value` pair, where key is an identifier and value will be parsed as raw as possible.
-identifierPair :: Parser (Identifier, Text)
-identifierPair = do
+-- | `key = value` pair, where key is an identifier and value is numeric.
+numericPair :: Parser (Identifier, Decimal)
+numericPair = do
     key <- identifier
     symbol "="
-    value <- takeWhile1P (Just "non-space character") (not . isSpace)
+    value <- decimal
     optional ws
     pure $ (key, value)
 

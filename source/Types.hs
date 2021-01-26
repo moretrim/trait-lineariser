@@ -8,7 +8,9 @@ Common types.
 |-}
 module Types
     ( BaseGameLocalisation(..)
-    , Interspersed(..), _Interspersed, _Comment
+    , Interspersed(..)
+        , _Parsed, _Comment, commentOut, commentOut'
+        , apI, liftI2
     , Key, OrderedKeys
     , Translation, Translations, each', each''
     , Entry
@@ -17,19 +19,28 @@ module Types
         , unquote
 
     -- Convenience re-exports
+    , module Data.List
     , module Data.List.NonEmpty
+    , module Data.HashMap.Strict
+    , module Data.Ratio
+    , module Data.Decimal
     , module Data.Text
     ) where
 
 import GHC.Generics        (Generic)
+import Unsafe.Coerce
 
 import Control.Lens
 
+import Data.List
 import Data.List.NonEmpty  (NonEmpty)
 import Data.Hashable       (Hashable)
 import Data.HashMap.Strict (HashMap)
 
 import Data.Text           (Text)
+import qualified Data.Text as Text
+import Data.Ratio          ((%))
+import Data.Decimal        (Decimal)
 
 ---------------------
 -- Program options --
@@ -46,10 +57,34 @@ data BaseGameLocalisation
 
 -- | For intermingling parse results with original comments.
 data Interspersed item
-    = Interspersed item
+    = Parsed item
     | Comment Text -- ^ Raw comment, be careful when splicing back
-    deriving stock (Show, Read, Eq, Ord, Generic)
+    deriving stock (Show, Read, Eq, Ord, Generic, Functor, Foldable, Traversable)
 makePrisms ''Interspersed
+
+-- | <*> for Interspersed.
+apI :: (Show a, Show b)
+    => Interspersed (a -> b) -> Interspersed a -> Interspersed b
+apI (Parsed f)  (Parsed a) = Parsed $ f a
+apI (Parsed {}) rhs        = commentOut rhs
+apI (Comment f)       rhs  = Comment $ f <> " " <> commentOut' rhs
+
+-- | liftA2 for Interspersed.
+liftI2 :: (Show a, Show b, Show c)
+       => (a -> b -> c) -> Interspersed a -> Interspersed b -> Interspersed c
+liftI2 f lhs rhs = fmap f lhs `apI` rhs
+
+-- | Turn an `Interspersed` data constructor into a `Comment` (as specified by the `Show` instance),
+-- if it isn’t one already.
+commentOut :: (Show item) => Interspersed item -> Interspersed item'
+commentOut (Parsed item)   = Comment . Text.pack $ show item
+commentOut original@(Comment {}) = unsafeCoerce original
+
+-- | Project an `Interspersed` item to either its textual representation if present, or the verbatim
+-- comment it is otherwise.
+commentOut' :: (Show item) => Interspersed item -> Text
+commentOut' (Parsed item) = Text.pack $ show item
+commentOut' (Comment comment)   = comment
 
 ------------
 -- Script --
