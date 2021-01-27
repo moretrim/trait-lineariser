@@ -18,8 +18,6 @@ import Control.Lens
 
 import Data.Traversable
 import Data.Foldable
-import Data.List
-import Data.Maybe
 import qualified Data.HashMap.Strict as HashMap
 
 import Data.String.Here.Interpolated
@@ -262,9 +260,7 @@ already linearised trait file?)
 
             pure traits
 
-    let (personalities, backgrounds) = traitsLocalisationKeys traits
-
-    localisation <- fmap (HashMap.unions . concat) . forConcurrently paths $ \base ->
+    localisation' <- fmap (HashMap.unions . concat) . forConcurrently paths $ \base ->
         withConsoleRegion Linear $ \region -> do
             let regionOpener = [i|Adding localisation from base path ‘${base}’…|] :: String
             setConsoleRegion region regionOpener
@@ -296,12 +292,17 @@ Parsing of one localisation file failed, skipping it:
 
     case baseGameLocalisation of
         IncludeBaseGame   -> note [iTrim|
-Found ${ HashMap.size localisation } localisation entries, and adding to it ${ HashMap.size baseLocalisation } base game entries.
+Found ${ HashMap.size localisation' } localisation entries, and adding to it ${ HashMap.size baseLocalisation } base game entries.
 |]
-        NoIncludeBaseGame -> note [i|Found ${ HashMap.size localisation } localisation entries.|]
+        NoIncludeBaseGame -> note [i|Found ${ HashMap.size localisation' } localisation entries.|]
 
-    let (orphans, entries) =
-            lineariseLocalisation localisation personalities backgrounds baseGameLocalisation
+    -- Compute everything!…
+    let !localisation                      = extendLocalisation baseGameLocalisation localisation'
+        !linearisedTraits                  = lineariseTraits traits
+        !linearisedMods                    = lineariseMods linearisedTraits
+        (!personalities, !backgrounds)      = traitsLocalisationKeys traits
+        (!orphans, !linearisedLocalisation) =
+            lineariseLocalisation linearisedMods localisation personalities backgrounds
 
     when (not $ null orphans) $ do
         note [iTrim|
@@ -311,10 +312,11 @@ The following traits were missing a translation:
 and/or `--include-base-game`.)
 |]
 
+    -- …and then write it out.
     withTempDirectory "." Hardcoded.outputBase $ \outputPath -> do
         let write path = let ?enc = CP1252 in writeFile (outputPath </> path) . Text.unpack
-        write "traits.txt" . formatTraits       $ lineariseTraits traits
-        write "traits.csv" . formatLocalisation $ entries
+        write "traits.txt" . formatTraits       $ linearisedTraits
+        write "traits.csv" . formatLocalisation $ linearisedLocalisation
         renameDirectory outputPath Hardcoded.outputBase
 
     note [i|Done!|]

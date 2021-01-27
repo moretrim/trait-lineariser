@@ -8,23 +8,49 @@ Common types.
 |-}
 module Types
     ( BaseGameLocalisation(..)
+
     , Interspersed(..)
         , _Parsed, _Comment, commentOut, commentOut'
         , apI, liftI2
-    , Key, OrderedKeys
-    , Translation, Translations, each', each''
-    , Entry
-    , Localisation, OrderedLocalisation
+
     , Identifier(..)
         , unquote
+    , Key, OrderedKeys
+    , Translation, Translations, each', each''
+
+    , BiList(..)
+        , firstBi, secondBi, bi
+        , iterateBi
+    , Mod
+    , Trait(..), Trait'
+        , traitName, traitMods
+    , Traits(..), Traits'
+        , traitsNullPersonality
+        , traitsPersonalities
+        , traitsNullBackground
+        , traitsBackgrounds
+        , traitsLocalisationKeys
+    , Grouped
+
+    , Entry
+    , Localisation, OrderedLocalisation
 
     -- Convenience re-exports
+
+    , module GHC.Generics
+
+    , module Data.Functor.Compose
+    , module Data.Maybe
     , module Data.List
     , module Data.List.NonEmpty
+    , module Data.Map.Lens
     , module Data.HashMap.Strict
+
+    , module Data.String.Here.Interpolated
+    , module Data.Text
+
     , module Data.Ratio
     , module Data.Decimal
-    , module Data.Text
     ) where
 
 import GHC.Generics        (Generic)
@@ -32,11 +58,14 @@ import Unsafe.Coerce
 
 import Control.Lens
 
+import Data.Functor.Compose
+import Data.Maybe
 import Data.List
 import Data.List.NonEmpty  (NonEmpty)
-import Data.Hashable       (Hashable)
+import Data.Map.Lens
 import Data.HashMap.Strict (HashMap)
 
+import Data.String.Here.Interpolated
 import Data.Text           (Text)
 import qualified Data.Text as Text
 import Data.Ratio          ((%))
@@ -49,7 +78,7 @@ import Data.Decimal        (Decimal)
 data BaseGameLocalisation
     = IncludeBaseGame
     | NoIncludeBaseGame
-    deriving stock (Show, Read, Eq, Ord, Generic)
+    deriving stock (Show, Read, Eq, Ord, Enum, Generic)
 
 ---------------------
 -- General parsing --
@@ -61,18 +90,6 @@ data Interspersed item
     | Comment Text -- ^ Raw comment, be careful when splicing back
     deriving stock (Show, Read, Eq, Ord, Generic, Functor, Foldable, Traversable)
 makePrisms ''Interspersed
-
--- | <*> for Interspersed.
-apI :: (Show a, Show b)
-    => Interspersed (a -> b) -> Interspersed a -> Interspersed b
-apI (Parsed f)  (Parsed a) = Parsed $ f a
-apI (Parsed {}) rhs        = commentOut rhs
-apI (Comment f)       rhs  = Comment $ f <> " " <> commentOut' rhs
-
--- | liftA2 for Interspersed.
-liftI2 :: (Show a, Show b, Show c)
-       => (a -> b -> c) -> Interspersed a -> Interspersed b -> Interspersed c
-liftI2 f lhs rhs = fmap f lhs `apI` rhs
 
 -- | Turn an `Interspersed` data constructor into a `Comment` (as specified by the `Show` instance),
 -- if it isn’t one already.
@@ -86,19 +103,35 @@ commentOut' :: (Show item) => Interspersed item -> Text
 commentOut' (Parsed item) = Text.pack $ show item
 commentOut' (Comment comment)   = comment
 
+-- | <*> for Interspersed.
+apI :: (Show a, Show b)
+    => Interspersed (a -> b) -> Interspersed a -> Interspersed b
+apI (Parsed f)  (Parsed a) = Parsed $ f a
+apI (Parsed {}) rhs        = commentOut rhs
+apI (Comment f)       rhs  = Comment $ f <> " " <> commentOut' rhs
+
+-- | liftA2 for Interspersed.
+liftI2 :: (Show a, Show b, Show c)
+       => (a -> b -> c) -> Interspersed a -> Interspersed b -> Interspersed c
+liftI2 f lhs rhs = fmap f lhs `apI` rhs
+
 ------------
 -- Script --
 ------------
 
--- | Script-side identifier.
+-- | Script-side identifier. Requires careful use, as e.g. `QuotedIdentifier
+-- "I-dont-require-quotes-in-script"` and `UnquotedIdentifier "I-dont-require-quotes-in-script"`
+-- point to the same referent in-engine (e.g. for the purpose of localisation).
+--
+-- For this reason we do NOT derive `Hashable`, to try & catch attempts at using `Identifier` as
+-- `HashMap` keys. Also see `unquote`.
 data Identifier
     = QuotedIdentifier Text -- ^ Contents only, quotation marks are implied
     | UnquotedIdentifier Text
     deriving stock (Show, Read, Eq, Ord, Generic)
-    deriving anyclass (Hashable)
 makePrisms ''Identifier
 
--- | Requires careful use, as it is unhygienic! Unquoted identifiers may not be valid script.
+-- | May require careful use, as it can be unhygienic: unquoted identifiers may not be valid script.
 unquote :: Identifier -> Text
 unquote (QuotedIdentifier contents)     = contents
 unquote (UnquotedIdentifier identifier) = identifier
@@ -110,6 +143,107 @@ instance Semigroup Identifier where
 
 instance Monoid Identifier where
     mempty = QuotedIdentifier ""
+
+------------
+-- Traits --
+------------
+
+-- | Present two lists as one functorial value.
+data BiList item = BiList
+    { _firstBi  :: [item]
+    , _secondBi :: [item]
+    }
+    deriving stock (Show, Read, Eq, Ord, Generic, Functor, Traversable, Foldable)
+
+makeLenses ''BiList
+
+-- | Project out the two lists.
+bi :: BiList item -> ([item], [item])
+bi (BiList xs ys) = (xs, ys)
+
+instance Semigroup (BiList item) where
+    (BiList as bs) <> (BiList xs ys) = BiList (as <> xs) (bs <> ys)
+
+instance Monoid (BiList item) where
+    mempty = BiList mempty mempty
+
+instance Applicative BiList where
+    pure item = BiList (pure item) mempty
+    (BiList fs gs) <*> (BiList as xs) =
+        BiList ((fs <*> as) <> (gs <*> as)) ((fs <*> xs) <> (gs <*> xs))
+
+instance Monad BiList where
+    (BiList xs ys) >>= f =
+        BiList
+            (foldr (<>) mempty $ fxs  <> fys)
+            (foldr (<>) mempty $ fxs' <> fys')
+      where
+        (fxs, fxs') = unzip $ bi . f <$> xs
+        (fys, fys') = unzip $ bi . f <$> ys
+
+-- | Injection from one list, useful for iteration.
+iterateBi :: [item] -> BiList item
+iterateBi xs = BiList xs mempty
+
+-- | Trait mod, see `Trait`.
+type Mod = (Identifier, Decimal)
+
+-- | A leader trait looks like the following:
+--
+--     imperious = {
+--         attack = 1
+--         defence = -2
+--         morale = 0.20
+--     }
+--
+-- That is, it is a named collection of army/navy modifiers.
+--
+-- We parametrise by the mod context.
+data Trait modF = Trait
+    { _traitName :: Identifier
+    , _traitMods :: modF (Interspersed Mod)
+    }
+    deriving stock (Generic)
+makeLenses ''Trait
+
+deriving instance (Show (modF (Interspersed Mod))) => Show (Trait modF)
+deriving instance (Read (modF (Interspersed Mod))) => Read (Trait modF)
+deriving instance (Eq   (modF (Interspersed Mod))) => Eq   (Trait modF)
+deriving instance (Ord  (modF (Interspersed Mod))) => Ord  (Trait modF)
+
+-- | Shortcut synonym.
+type Trait' = Trait []
+
+-- | The contents of a `common/traits.txt` file. Parametrised over the trait mod context as well
+-- as the context for backgrounds—so as to allow for grouping, refer to `linearise`.
+data Traits modF traitF = Traits
+    { _traitsNullPersonality :: Trait' -- ^ The `no_personality` entry that the game expects
+    , _traitsPersonalities   :: NonEmpty (Trait modF)
+    , _traitsNullBackground  :: Trait' -- ^ The `no_background` entry that the game expects
+    , _traitsBackgrounds     :: traitF (Trait modF)
+    }
+    deriving stock (Generic)
+makeLenses ''Traits
+
+-- | Shortcut synonym.
+type Traits' = Traits []
+
+deriving instance (Show (traitF (Trait modF)), Show (Trait modF)) => Show (Traits modF traitF)
+deriving instance (Read (traitF (Trait modF)), Read (Trait modF)) => Read (Traits modF traitF)
+deriving instance (Eq   (traitF (Trait modF)), Eq   (Trait modF)) => Eq   (Traits modF traitF)
+deriving instance (Ord  (traitF (Trait modF)), Ord  (Trait modF)) => Ord  (Traits modF traitF)
+
+-- | Functor corresponding to Λitem. [(Trait', NonEmpty item)], the container for items grouped by
+-- traits.
+type Grouped = Compose (Compose [] ((,) Trait')) NonEmpty
+
+-- | Project localisation keys.
+traitsLocalisationKeys :: Traits modF NonEmpty -> (OrderedKeys, OrderedKeys)
+traitsLocalisationKeys ts = over each traitNames ( _traitsPersonalities ts
+                                                 , _traitsBackgrounds ts
+                                                 )
+  where
+    traitNames = fmap (unquote . _traitName)
 
 ------------------
 -- Localisation --

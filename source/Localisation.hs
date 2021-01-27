@@ -8,14 +8,13 @@ Localisation parsing & linearising.
 |-}
 module Localisation
     ( localisations
+    , extendLocalisation
     , lineariseLocalisation
     , formatLocalisation
     ) where
 
-import GHC.Exts                                    (IsString(..))
-import GHC.Generics                                (Generic)
-
 import Control.Lens hiding                         (noneOf)
+import Control.Applicative hiding                  (many, some)
 import Control.Monad
 
 import qualified Data.HashSet as HashSet
@@ -24,7 +23,6 @@ import qualified Data.HashMap.Strict as HashMap
 import Data.Functor
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Foldable
-import Data.Maybe
 
 import Data.String.Here.Interpolated
 import qualified Data.Text as Text
@@ -205,28 +203,31 @@ localisations = generatedFile <|> do
         -- skip generated file
         generatedFile = mempty <$ string localisationHeader
 
+-- | Extend localisation with base game entries according to the `BaseGameLocalisation` setting.
+extendLocalisation :: BaseGameLocalisation -> Localisation -> Localisation
+extendLocalisation baseGameLocalisation localisation = case baseGameLocalisation of
+    IncludeBaseGame   -> HashMap.union localisation baseLocalisation
+    NoIncludeBaseGame -> localisation
+
 -- | Compute the localisation of combining personalities and backgrounds into linear trait pairs.
 -- Reports orphan keys (i.e. those that had no localisation entries) on the side.
-lineariseLocalisation :: Localisation
+lineariseLocalisation :: HashMap Text (HashMap Text Decimal)
+                      -> Localisation
                       -> OrderedKeys
                       -> OrderedKeys
-                      -> BaseGameLocalisation
                       -> (HashSet.HashSet Key, OrderedLocalisation)
-lineariseLocalisation localisation' personalities backgrounds baseGame = (orphans, productEntries)
+lineariseLocalisation linearisedTraits localisation personalities backgrounds =
+    (orphans, productEntries)
   where
-    -- sprinkle base game localisation
-    localisation = case baseGame of
-        IncludeBaseGame   -> HashMap.union localisation' baseLocalisation
-        NoIncludeBaseGame -> localisation'
-
-    personalities' = HashSet.toMap . HashSet.fromList $ toList personalities
-    backgrounds'   = HashSet.toMap . HashSet.fromList $ toList backgrounds
+    toSet = HashSet.toMap . HashSet.fromList . toList
+    personalities' = toSet personalities
+    backgrounds'   = toSet backgrounds
 
     orphans = HashMap.keysSet $
            HashMap.difference personalities' localisation
         <> HashMap.difference backgrounds'   localisation
 
-    -- maintain original trait order, but stick to what can be translated
+    -- maintain original trait order by using listy operations, but stick to what can be translated
     translatable = NonEmpty.filter (`HashMap.member` localisation)
 
     productEntries =
@@ -240,10 +241,33 @@ lineariseLocalisation localisation' personalities backgrounds baseGame = (orphan
         -- the following is safe as long as we stick to translatable keys, see above
         personalityTranslations = each' . fromJust $ HashMap.lookup personality localisation
         backgroundTranslations  = each' . fromJust $ HashMap.lookup background  localisation
-        translations = each'' $ zipWith concatTraits personalityTranslations backgroundTranslations
+        translations = each'' $ zipWith
+            (liftA2 $ concatTraits personality background)
+            personalityTranslations
+            backgroundTranslations
 
-    concatTraits personality background =
-        Hardcoded.productTranslation <$> personality <*> background
+    concatTraits personality background personalityTranslation backgroundTranslation =
+        Hardcoded.productTranslation personalityTranslation backgroundTranslation stats
+          where
+            linearisedTrait = Hardcoded.productKey personality background
+            mods            = HashMap.lookup linearisedTrait linearisedTraits
+
+            signed quantity = sign quantity <> Text.pack (show quantity)
+              where
+                sign quantity | quantity < 0 = "" -- minus sign produced by `show`
+                sign _        | otherwise    = "+"
+
+            highlight mod' importance blanks = Hardcoded.colour Hardcoded.hpmPalette mod level
+              where
+                mod   = fromMaybe blanks                 $ signed     <$> mod'
+                level = fromMaybe Hardcoded.NoImportance $ importance <$> mod'
+
+            stats = [attackHighlight, defenceHighlight]
+            blank2 = "  " -- columns taken by values ranging from -9 to +9
+            attackMod        = HashMap.lookup Hardcoded.attack  =<< mods
+            defenceMod       = HashMap.lookup Hardcoded.defence =<< mods
+            attackHighlight  = highlight attackMod  Hardcoded.attackImportance  blank2
+            defenceHighlight = highlight defenceMod Hardcoded.defenceImportance blank2
 
 formatEntry :: Entry -> Text
 formatEntry (key, translations) = key <> ";" <> translated

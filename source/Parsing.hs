@@ -18,14 +18,11 @@ module Parsing
     , scriptEntry
     ) where
 
-import GHC.Generics                                (Generic)
-
 import Control.Lens
 
 import Data.Functor
 
 import Data.Void
-import Data.Maybe
 import Data.Char
 import Data.String.Here.Interpolated
 import qualified Data.Text as Text
