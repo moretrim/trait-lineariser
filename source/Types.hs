@@ -25,6 +25,8 @@ module Types
 
     , module GHC.Generics
 
+    , module Control.Lens
+
     , module Data.Maybe
     , module Data.List
     , module Data.List.NonEmpty
@@ -41,10 +43,10 @@ module Types
 import GHC.Generics        (Generic)
 import Unsafe.Coerce
 
-import Control.Lens
+import Control.Lens hiding (noneOf)
 
 import Data.Maybe
-import Data.List
+import Data.List hiding    (uncons)
 import Data.List.NonEmpty  (NonEmpty)
 import Data.Map.Lens
 import Data.HashMap.Strict (HashMap)

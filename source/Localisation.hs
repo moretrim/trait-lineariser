@@ -13,7 +13,6 @@ module Localisation
     , formatLocalisation
     ) where
 
-import Control.Lens hiding                         (noneOf)
 import Control.Applicative hiding                  (many, some)
 import Control.Monad
 
@@ -24,12 +23,10 @@ import Data.Functor
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Foldable
 
-import Data.String.Here.Interpolated
 import qualified Data.Text as Text
 
 import Text.Megaparsec
 import Text.Megaparsec.Char
-import qualified Text.Megaparsec.Char.Lexer as Lex
 
 import qualified Hardcoded
 import Types
@@ -253,14 +250,14 @@ lineariseLocalisation linearisedTraits localisation personalities backgrounds =
             mods            = HashMap.lookup linearisedTrait linearisedTraits
 
             signed quantity = sign quantity <> Text.pack (show quantity)
-              where
-                sign quantity | quantity < 0 = "" -- minus sign produced by `show`
-                sign _        | otherwise    = "+"
+            sign quantity | quantity < 0 = "" -- minus sign produced by `show`
+            sign _        | otherwise    = "+"
 
-            highlight mod' importance blanks = Hardcoded.colour Hardcoded.hpmPalette mod level
+            highlight modifier' importance blanks =
+                Hardcoded.colour Hardcoded.hpmPalette modifier level
               where
-                mod   = fromMaybe blanks                 $ signed     <$> mod'
-                level = fromMaybe Hardcoded.NoImportance $ importance <$> mod'
+                modifier = fromMaybe blanks                 $ signed     <$> modifier'
+                level    = fromMaybe Hardcoded.NoImportance $ importance <$> modifier'
 
             stats = [attackHighlight, defenceHighlight]
             blank2 = "  " -- columns taken by values ranging from -9 to +9

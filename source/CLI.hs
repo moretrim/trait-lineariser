@@ -8,34 +8,28 @@ CLI implementation & entry point.
 |-}
 module Main where
 
-import Prelude hiding                        (getContents, readFile, writeFile)
+import Prelude hiding                        (readFile, writeFile)
 
 import Control.Exception
 
 import Control.Applicative
 import Control.Monad
-import Control.Lens
 
-import Data.Traversable
 import Data.Foldable
 import qualified Data.HashMap.Strict as HashMap
 
-import Data.String.Here.Interpolated
-import Data.String.Here.Uninterpolated
 import qualified Data.Text as Text
-import qualified Data.Text.IO as Text
 
 import Data.Encoding.Exception               (DecodingException)
-import Data.Encoding.UTF8
 import Data.Encoding.CP1252
 
-import Text.Megaparsec
+import Text.Megaparsec hiding                (count)
 
 import System.Exit                           (exitFailure)
 import System.FilePath                       ((</>), takeFileName, takeExtension)
 import System.Directory                      (doesPathExist, listDirectory, renameDirectory)
 import System.IO.Temp                        (withTempDirectory)
-import System.IO.Encoding                    (getContents, readFile, writeFile)
+import System.IO.Encoding                    (readFile, writeFile)
 
 import qualified Options.Applicative as Args
 import qualified Options.Applicative.Help as Args hiding (fullDesc)
@@ -113,14 +107,14 @@ parseArgs = Args.execParser $ Args.info (Args.helper <*> args) desc
     args = (,,) <$> modPath <*> extraLoc <*> (includeBaseGame <|> noIncludeBaseGame)
 
     paragraphs       = Args.unChunk . Args.vcatChunks
-    separate   items = fmap (\item -> para item `cat` blank) items
+    separate   items = fmap (\item -> paragraph item `cat` blank) items
       where
         cat = Args.chunked (Args..$.)
 
     help     = Args.helpDoc     . paragraphs . separate
     progDesc = Args.progDescDoc . paragraphs
 
-    para  = Args.paragraph
+    paragraph  = Args.paragraph
     blank :: (Applicative f, Monoid a) => f a
     blank = pure mempty -- ^ blank line acting as separator
 
@@ -183,20 +177,20 @@ default behaviour, see `--include-base-game`.
     desc =
         Args.fullDesc
         <> progDesc [ blank
-                    , para [iTrim|
+                    , paragraph [iTrim|
 Linearise the personalities and backgrounds that generals and admirals can have. All output is
 written to the ‘${ Hardcoded.outputBase }’ directory as long as it doesn’t exist (otherwise the
 process is aborted), and consists of the following:
 |]
                     , blank
-                    , para [iTrim|
+                    , paragraph [iTrim|
 - a `traits.txt` file containing linearised traits
 |]
-                    , para [iTrim|
+                    , paragraph [iTrim|
 - a `traits.csv` file containing localisation entries
 |]
                     , blank
-                    , para [iTrim|
+                    , paragraph [iTrim|
 Translations in the localisation file are collated from each of the base paths passed as arguments.
 As such a localisation entry for each trait is required to be present if you want complete a
 linearised localisation to be produced. Refer to the `--extra-localisation` option.
@@ -261,9 +255,9 @@ already linearised trait file?)
             pure traits
 
     localisation' <- fmap (HashMap.unions . concat) . forConcurrently paths $ \base ->
-        withConsoleRegion Linear $ \region -> do
-            let regionOpener = [i|Adding localisation from base path ‘${base}’…|] :: String
-            setConsoleRegion region regionOpener
+        withConsoleRegion Linear $ \pathProgress -> do
+            let opener = [i|Adding localisation from base path ‘${base}’…|] :: String
+            setConsoleRegion pathProgress opener
 
             let pickCSVs = filter csvExtension
                 csvExtension = (== ".csv") . takeExtension
@@ -274,7 +268,7 @@ already linearised trait file?)
             -- [1]: presumably, at any rate, since this has not been tested in depth
             locFiles <- (sort . pickCSVs) <$> listDirectory (localisationPath base)
 
-            finishConsoleRegion region $ regionOpener
+            finishConsoleRegion pathProgress $ opener
                 <> [i| found ${ length locFiles } localisation files.|]
 
             forConcurrently locFiles $ \path -> do

@@ -27,7 +27,6 @@ module Traits
 import Control.Applicative hiding                  (many, some)
 import Control.Applicative.Permutations            (runPermutation, toPermutation)
 import Control.Monad.Combinators.NonEmpty          (some)
-import Control.Lens hiding                         (noneOf)
 
 import Data.Functor.Compose
 import Data.Functor.Product
@@ -36,13 +35,9 @@ import Data.Foldable
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.HashMap.Strict as HashMap
 
-import Data.Char
-import Data.String.Here.Interpolated
 import qualified Data.Text as Text
 
 import Text.Megaparsec hiding                      (some)
-import Text.Megaparsec.Char
-import qualified Text.Megaparsec.Char.Lexer as Lex
 
 import qualified Hardcoded
 import Types
@@ -270,7 +265,7 @@ formatBlock level body = [iTrim|
 
 formatIdentifier :: Identifier -> Text
 formatIdentifier (QuotedIdentifier contents)     = "\"" <> contents <> "\""
-formatIdentifier (UnquotedIdentifier identifier) = identifier
+formatIdentifier (UnquotedIdentifier identifier') = identifier'
 
 formatMod :: Interspersed Mod -> Text
 formatMod (Parsed (key, value)) = [iTrim|${formatIdentifier key} = ${value}|]

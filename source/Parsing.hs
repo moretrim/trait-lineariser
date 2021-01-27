@@ -18,13 +18,10 @@ module Parsing
     , scriptEntry
     ) where
 
-import Control.Lens
-
 import Data.Functor
 
 import Data.Void
 import Data.Char
-import Data.String.Here.Interpolated
 import qualified Data.Text as Text
 
 import Text.Megaparsec hiding                      (some)
@@ -100,11 +97,12 @@ decimal = Lex.signed ws parser <?> "numeric value"
     integral   = Lex.decimal
     fractional = fromRational <$> ( (+) <$> whole <*> fraction )
 
-    whole    = (fromInteger . fromMaybe 0) <$> optional integral
-    fraction = fromDigits <$ symbol "." <*> takeWhile1P (Just "digit") isDigit
+    whole            = (fromInteger . fromMaybe 0) <$> optional integral
+    fraction         = fromDigits <$ decimalSeparator <*> takeWhile1P (Just "digit") isDigit
+    decimalSeparator = symbol "."
 
     fromDigits = uncurry (%) . Text.foldl' tally (0, 1)
-    tally (!num, !exp) d = (10 * num + digit d, exp * 10)
+    tally (!num, !exp') d = (10 * num + digit d, exp' * 10)
     digit '0' = 0
     digit '1' = 1
     digit '2' = 2
@@ -115,7 +113,8 @@ decimal = Lex.signed ws parser <?> "numeric value"
     digit '7' = 7
     digit '8' = 8
     digit '9' = 9
-    digit  _  = error "Parsing.decimal.digit: non-exhaustive pattern match, was the input a digit?"
+    digit  _  =
+        error "Parsing.decimal.digit: non-exhaustive pattern match, decimal digit was expected"
 
 -- | `{ body }`
 block :: Parser body -> Parser body

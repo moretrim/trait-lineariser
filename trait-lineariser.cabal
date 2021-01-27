@@ -50,7 +50,8 @@ common properties
                         -Werror=unticked-promoted-constructors
 
     if flag(review)
-        ghc-options:    -Wtabs -Wincomplete-uni-patterns
+        ghc-options:    -Wname-shadowing -Wtabs -Wincomplete-uni-patterns
+                        -Wno-unused-do-bind
     elif flag(release)
         ghc-options:    -Wno-all
                         -Wno-error=unticked-promoted-constructors
