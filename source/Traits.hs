@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-|
 
 Copyright: © 2021 moretrim
@@ -7,7 +8,16 @@ Trait file parsing & linearising.
 
 |-}
 module Traits
-    ( traitsStructure
+    ( Mod
+    , Trait(..), Trait'
+        , traitName, traitMods
+    , Traits(..), Traits'
+        , traitsNullPersonality
+        , traitsPersonalities
+        , traitsNullBackground
+        , traitsBackgrounds
+        , traitsLocalisationKeys
+    , traitsStructure
     , lineariseTraits
     , lineariseMods
     , lineariserHeader
@@ -19,7 +29,8 @@ import Control.Applicative.Permutations            (runPermutation, toPermutatio
 import Control.Monad.Combinators.NonEmpty          (some)
 import Control.Lens hiding                         (noneOf)
 
-import Data.Functor.Classes
+import Data.Functor.Compose
+import Data.Functor.Product
 import Data.Foldable
 
 import qualified Data.List.NonEmpty as NonEmpty
@@ -40,6 +51,83 @@ import Parsing
 ------------------------
 -- Trait file parsing --
 ------------------------
+
+-- | Present two lists as one functorial value.
+type BiList = Product [] []
+
+{-# complete BiList :: Product #-}
+pattern BiList :: [item] -> [item] -> BiList item
+pattern BiList as bs = Pair as bs
+
+instance Semigroup (BiList a) where
+    (BiList as bs) <> (BiList xs ys) = BiList (as <> xs) (bs <> ys)
+
+instance Monoid (BiList a) where
+    mempty = BiList mempty mempty
+
+-- | Project out the two lists.
+bi :: BiList item -> ([item], [item])
+bi (BiList xs ys) = (xs, ys)
+
+-- | Trait mod, see `Trait`.
+type Mod = (Identifier, Decimal)
+
+-- | A leader trait looks like the following:
+--
+--     imperious = {
+--         attack = 1
+--         defence = -2
+--         morale = 0.20
+--     }
+--
+-- That is, it is a named collection of army/navy modifiers.
+--
+-- We parametrise by the mod context.
+data Trait modF = Trait
+    { _traitName :: Identifier
+    , _traitMods :: modF (Interspersed Mod)
+    }
+    deriving stock (Generic)
+makeLenses ''Trait
+
+deriving instance (Show (modF (Interspersed Mod))) => Show (Trait modF)
+deriving instance (Read (modF (Interspersed Mod))) => Read (Trait modF)
+deriving instance (Eq   (modF (Interspersed Mod))) => Eq   (Trait modF)
+deriving instance (Ord  (modF (Interspersed Mod))) => Ord  (Trait modF)
+
+-- | Shortcut synonym.
+type Trait' = Trait []
+
+-- | The contents of a `common/traits.txt` file. Parametrised over the trait mod context as well
+-- as the context for backgrounds—so as to allow for grouping, refer to `linearise`.
+data Traits modF traitF = Traits
+    { _traitsNullPersonality :: Trait' -- ^ The `no_personality` entry that the game expects
+    , _traitsPersonalities   :: NonEmpty (Trait modF)
+    , _traitsNullBackground  :: Trait' -- ^ The `no_background` entry that the game expects
+    , _traitsBackgrounds     :: traitF (Trait modF)
+    }
+    deriving stock (Generic)
+makeLenses ''Traits
+
+-- | Shortcut synonym.
+type Traits' = Traits []
+
+deriving instance (Show (traitF (Trait modF)), Show (Trait modF)) => Show (Traits modF traitF)
+deriving instance (Read (traitF (Trait modF)), Read (Trait modF)) => Read (Traits modF traitF)
+deriving instance (Eq   (traitF (Trait modF)), Eq   (Trait modF)) => Eq   (Traits modF traitF)
+deriving instance (Ord  (traitF (Trait modF)), Ord  (Trait modF)) => Ord  (Traits modF traitF)
+
+-- | Functor corresponding to Λitem. [(Trait', NonEmpty item)], the container for trait pairs
+-- grouped by the original personality.
+type Grouped = Compose (Compose [] ((,) Trait')) NonEmpty
+
+-- | Project localisation keys.
+traitsLocalisationKeys :: Traits modF NonEmpty -> (OrderedKeys, OrderedKeys)
+traitsLocalisationKeys ts = over each traitNames ( _traitsPersonalities ts
+                                                 , _traitsBackgrounds ts
+                                                 )
+  where
+    traitNames = fmap (unquote . _traitName)
 
 modifier :: Parser Mod
 modifier = numericPair
