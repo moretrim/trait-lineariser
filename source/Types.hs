@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-|
 
 Copyright: © 2021 moretrim
@@ -18,9 +19,8 @@ module Types
     , Key, OrderedKeys
     , Translation, Translations, each', each''
 
-    , BiList(..)
-        , firstBi, secondBi, bi
-        , iterateBi
+    , BiList
+        , pattern BiList, bi
     , Mod
     , Trait(..), Trait'
         , traitName, traitMods
@@ -59,6 +59,7 @@ import Unsafe.Coerce
 import Control.Lens
 
 import Data.Functor.Compose
+import Data.Functor.Product
 import Data.Maybe
 import Data.List
 import Data.List.NonEmpty  (NonEmpty)
@@ -149,41 +150,21 @@ instance Monoid Identifier where
 ------------
 
 -- | Present two lists as one functorial value.
-data BiList item = BiList
-    { _firstBi  :: [item]
-    , _secondBi :: [item]
-    }
-    deriving stock (Show, Read, Eq, Ord, Generic, Functor, Traversable, Foldable)
+type BiList = Product [] []
 
-makeLenses ''BiList
+{-# complete BiList :: Product #-}
+pattern BiList :: [item] -> [item] -> BiList item
+pattern BiList as bs = Pair as bs
+
+instance Semigroup (BiList a) where
+    (BiList as bs) <> (BiList xs ys) = BiList (as <> xs) (bs <> ys)
+
+instance Monoid (BiList a) where
+    mempty = BiList mempty mempty
 
 -- | Project out the two lists.
 bi :: BiList item -> ([item], [item])
 bi (BiList xs ys) = (xs, ys)
-
-instance Semigroup (BiList item) where
-    (BiList as bs) <> (BiList xs ys) = BiList (as <> xs) (bs <> ys)
-
-instance Monoid (BiList item) where
-    mempty = BiList mempty mempty
-
-instance Applicative BiList where
-    pure item = BiList (pure item) mempty
-    (BiList fs gs) <*> (BiList as xs) =
-        BiList ((fs <*> as) <> (gs <*> as)) ((fs <*> xs) <> (gs <*> xs))
-
-instance Monad BiList where
-    (BiList xs ys) >>= f =
-        BiList
-            (foldr (<>) mempty $ fxs  <> fys)
-            (foldr (<>) mempty $ fxs' <> fys')
-      where
-        (fxs, fxs') = unzip $ bi . f <$> xs
-        (fys, fys') = unzip $ bi . f <$> ys
-
--- | Injection from one list, useful for iteration.
-iterateBi :: [item] -> BiList item
-iterateBi xs = BiList xs mempty
 
 -- | Trait mod, see `Trait`.
 type Mod = (Identifier, Decimal)

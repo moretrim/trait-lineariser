@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-|
 
 Copyright: © 2021 moretrim
@@ -6,7 +7,6 @@ Licence:   GPL-3.0-only
 Inline translations.
 
 |-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 module Localisation.Base
     ( nt, nt', t, hide
     , baseLocalisation
