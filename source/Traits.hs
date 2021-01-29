@@ -34,11 +34,11 @@ import qualified Data.MultiSet as MultiSet
 import qualified Data.Text as Text
 
 import qualified Hardcoded
-import Parsing
+import Types.Parsing
 
-------------------------
--- Trait file parsing --
-------------------------
+-----------
+-- Parse --
+-----------
 
 -- | Present two lists as one functorial value.
 type BiList = Product [] []

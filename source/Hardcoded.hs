@@ -3,7 +3,7 @@
 Copyright: © 2021 moretrim
 Licence:   GPL-3.0-only
 
-Things that are hardcoded, and might not need to be. Designed to be importad qualified, to highlight
+Things that are hardcoded, and might not need to be. Designed to be imported qualified, to highlight
 what is being done.
 
 |-}

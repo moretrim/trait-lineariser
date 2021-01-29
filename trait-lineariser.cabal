@@ -84,7 +84,7 @@ executable trait-lineariser
     import:         properties
     hs-source-dirs: source
     main-is:        CLI.hs
-    other-modules:  Types, Hardcoded, Parsing, Traits, Localisation.Base, Localisation
+    other-modules:  Types, Types.Parsing, Hardcoded, Traits, Localisation.Base, Localisation
     default-extensions: ImplicitParams
     build-depends: async == 2.*,
                    concurrent-output == 1.*,

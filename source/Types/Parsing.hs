@@ -3,10 +3,10 @@
 Copyright: © 2021 moretrim
 Licence:   GPL-3.0-only
 
-Common parsing items.
+Common items relating to Victoria II file parsing.
 
 |-}
-module Parsing
+module Types.Parsing
     ( Parser
     , lineComment, ws, ws'
     , lexeme, lexeme' , symbol, symbol'
@@ -38,11 +38,9 @@ import Types hiding                       (many, some)
 
 type Parser = Parsec Void Text
 
-----------------------------------
--- Victoria II specific parsing --
-----------------------------------
-
+------------
 -- Lexing --
+------------
 
 lineComment :: Parser Text
 lineComment = Text.cons <$> char '#' <*> takeWhileP (Just "comment character") (/= '\n')
@@ -65,7 +63,9 @@ symbol, symbol' :: Text -> Parser Text
 symbol  = Lex.symbol ws
 symbol' = Lex.symbol ws'
 
+-------------
 -- Parsing --
+-------------
 
 -- | Parse an item or a comment.
 commented' :: Parser item -> Parser (Interspersed item)
