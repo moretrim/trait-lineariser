@@ -13,23 +13,15 @@ module Localisation
     , formatLocalisation
     ) where
 
-import Control.Applicative hiding                  (many, some)
-import Control.Monad
 
 import qualified Data.HashSet as HashSet
 import qualified Data.HashMap.Strict as HashMap
 
-import Data.Functor
 import qualified Data.List.NonEmpty as NonEmpty
-import Data.Foldable
 
 import qualified Data.Text as Text
 
-import Text.Megaparsec
-import Text.Megaparsec.Char
-
 import qualified Hardcoded
-import Types
 import Parsing
 import Localisation.Base
 
@@ -193,6 +185,8 @@ localisations = generatedFile <|> do
     optional eor
     eof
 
+    -- In case of duplicates, `fromList` is biased towards later entries. No idea if this reflects
+    -- the behaviour of the game or not.
     pure $ HashMap.fromList rows
 
       where
@@ -235,7 +229,7 @@ lineariseLocalisation linearisedTraits localisation personalities backgrounds =
     productEntry personality background =
         (Hardcoded.productKey personality background, translations)
       where
-        -- the following is safe as long as we stick to translatable keys, see above
+        -- the following is safe as long as we stick to `translatable` keys, see above
         personalityTranslations = each' . fromJust $ HashMap.lookup personality localisation
         backgroundTranslations  = each' . fromJust $ HashMap.lookup background  localisation
         translations = each'' $ zipWith

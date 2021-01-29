@@ -12,10 +12,6 @@ import Prelude hiding                        (readFile, writeFile)
 
 import Control.Exception
 
-import Control.Applicative
-import Control.Monad
-
-import Data.Foldable
 import qualified Data.HashMap.Strict as HashMap
 
 import qualified Data.Text as Text

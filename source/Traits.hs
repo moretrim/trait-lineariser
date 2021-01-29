@@ -24,23 +24,16 @@ module Traits
     , formatTraits
     ) where
 
-import Control.Applicative hiding                  (many, some)
-import Control.Applicative.Permutations            (runPermutation, toPermutation)
-import Control.Monad.Combinators.NonEmpty          (some)
-
 import Data.Functor.Compose
 import Data.Functor.Product
-import Data.Foldable
 
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.HashMap.Strict as HashMap
+import qualified Data.MultiSet as MultiSet
 
 import qualified Data.Text as Text
 
-import Text.Megaparsec hiding                      (some)
-
 import qualified Hardcoded
-import Types
 import Parsing
 
 ------------------------
@@ -149,6 +142,29 @@ traitsStructure = do
                     scriptEntry "background" $ do
                         (,) <$> nullTrait "background" "no_background" <*> traits "background"
                 )
+
+    -- not present in lens 4.17.1
+    let filteredBy p f val = case val ^? p of
+            Nothing -> pure val
+            Just witness -> indexed f witness val
+
+    let duplicates =
+            toListOf (folded . filteredBy (_2 . filtered (>1)))
+            . MultiSet.toOccurList
+            . MultiSet.fromList
+            . toListOf (folded . traitName . to unquote)
+        personalities' = duplicates $ NonEmpty.cons nullPersonality personalities
+        backgrounds'   = duplicates $ NonEmpty.cons nullBackground backgrounds
+        duplicatesFound kind found = [iTrim|
+Duplicate ${kind::String} found:
+    ${Text.unpack . Text.intercalate "\n    " $ toListOf (folded . _1) found}
+Duplicates are neither supported by the game nor this tool.
+|]
+
+    when (not $ null personalities') $ do
+        fail $ duplicatesFound "personalities" personalities'
+    when (not $ null backgrounds') $ do
+        fail $ duplicatesFound "backgrounds" backgrounds'
 
     eof
 

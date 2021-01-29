@@ -74,6 +74,7 @@ common properties
                    lens == 4.*,
                    hashable == 1.*,
                    unordered-containers == 0.2.*,
+                   multiset == 0.3.*,
                    text == 1.*,
                    Decimal == 0.5.*,
                    megaparsec == 8.*,

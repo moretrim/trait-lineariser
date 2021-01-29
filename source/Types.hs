@@ -25,14 +25,21 @@ module Types
 
     , module GHC.Generics
 
+    , module Control.Applicative
+    , module Control.Monad
     , module Control.Lens
 
+    , module Data.Functor
+    , module Data.Traversable
+    , module Data.Foldable
+    , module Data.Void
     , module Data.Maybe
     , module Data.List
     , module Data.List.NonEmpty
     , module Data.Map.Lens
     , module Data.HashMap.Strict
 
+    , module Data.Char
     , module Data.String.Here.Interpolated
     , module Data.Text
 
@@ -43,14 +50,21 @@ module Types
 import GHC.Generics        (Generic)
 import Unsafe.Coerce
 
+import Control.Applicative
+import Control.Monad
 import Control.Lens hiding (noneOf)
 
+import Data.Functor
+import Data.Traversable
+import Data.Foldable
+import Data.Void
 import Data.Maybe
 import Data.List hiding    (uncons)
-import Data.List.NonEmpty  (NonEmpty)
+import Data.List.NonEmpty  (NonEmpty(..))
 import Data.Map.Lens
 import Data.HashMap.Strict (HashMap)
 
+import Data.Char
 import Data.String.Here.Interpolated
 import Data.Text           (Text)
 import qualified Data.Text as Text
@@ -173,7 +187,7 @@ The anatomy of a line is as follows:
 -- raw.
 type Key = Text
 
--- | Ordered set of localisation keys.
+-- | Ordered set of localisation keys. That means it can be assumed there are no duplicates.
 type OrderedKeys = NonEmpty Key
 
 -- | Not everything is translated into every language, especially with mods.

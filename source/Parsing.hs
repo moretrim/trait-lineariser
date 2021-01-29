@@ -16,19 +16,25 @@ module Parsing
     , block
     , numericPair
     , scriptEntry
+
+    -- | Take over the module, taking care of clashes
+    , module Types
+    , module Control.Applicative.Permutations
+    , module Control.Monad.Combinators.NonEmpty
+    , module Text.Megaparsec
+    , module Text.Megaparsec.Char
     ) where
 
-import Data.Functor
-
-import Data.Void
-import Data.Char
 import qualified Data.Text as Text
 
-import Text.Megaparsec hiding                      (some)
+import Control.Applicative.Permutations   (runPermutation, toPermutation)
+import Control.Monad.Combinators.NonEmpty (some)
+
+import Text.Megaparsec hiding             (some)
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as Lex
 
-import Types
+import Types hiding                       (many, some)
 
 type Parser = Parsec Void Text
 
