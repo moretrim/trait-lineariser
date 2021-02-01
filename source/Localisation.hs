@@ -13,7 +13,6 @@ module Localisation
     , formatLocalisation
     ) where
 
-
 import qualified Data.HashSet as HashSet
 import qualified Data.HashMap.Strict as HashMap
 
@@ -202,38 +201,42 @@ extendLocalisation baseGameLocalisation localisation = case baseGameLocalisation
 
 -- | Compute the localisation of combining personalities and backgrounds into linear trait pairs.
 -- Reports orphan keys (i.e. those that had no localisation entries) on the side.
-lineariseLocalisation :: HashMap Text (HashMap Text Decimal)
+lineariseLocalisation :: HashMap Key (HashMap Text Decimal)
                       -> Localisation
                       -> OrderedKeys
                       -> OrderedKeys
                       -> (HashSet.HashSet Key, OrderedLocalisation)
-lineariseLocalisation linearisedTraits localisation personalities backgrounds =
+lineariseLocalisation linearisedTraits localisation personalities' backgrounds' =
     (orphans, productEntries)
   where
     toSet = HashSet.toMap . HashSet.fromList . toList
-    personalities' = toSet personalities
-    backgrounds'   = toSet backgrounds
-
     orphans = HashMap.keysSet $
-           HashMap.difference personalities' localisation
-        <> HashMap.difference backgrounds'   localisation
+           HashMap.difference (toSet personalities') localisation
+        <> HashMap.difference (toSet backgrounds')   localisation
 
     -- maintain original trait order by using listy operations, but stick to what can be translated
     translatable = NonEmpty.filter (`HashMap.member` localisation)
+    personalities = translatable personalities'
+    backgrounds   = translatable backgrounds'
+    translation :: Key -> Translations
+    translation trait =
+        -- sticking to what can be translated justifies the following
+        fromJust $ HashMap.lookup trait localisation
 
     productEntries =
         localisationHeader'
         <> localisationPreamble'
-        <> toList (productEntry <$> translatable personalities <*> translatable backgrounds)
+        <> toList (productEntry <$> personalities <*> backgrounds)
 
+    productEntry :: Key -> Key -> (Key, Translations)
     productEntry personality background =
         (Hardcoded.productKey personality background, translations)
       where
-        -- the following is safe as long as we stick to `translatable` keys, see above
-        personalityTranslations = each' . fromJust $ HashMap.lookup personality localisation
-        backgroundTranslations  = each' . fromJust $ HashMap.lookup background  localisation
-        translations = each'' $ zipWith
-            (liftA2 $ concatTraits personality background)
+        personalityTranslations, backgroundTranslations, translations :: Translations
+        personalityTranslations = translation personality
+        backgroundTranslations  = translation background
+        translations = runIdentity $ zipT
+            (\pers bg -> Identity $ liftA2 (concatTraits personality background) pers bg)
             personalityTranslations
             backgroundTranslations
 
@@ -263,7 +266,8 @@ lineariseLocalisation linearisedTraits localisation personalities backgrounds =
 formatEntry :: Entry -> Text
 formatEntry (key, translations) = key <> ";" <> translated
   where
-    translated = Text.concat . fmap ((<> ";") . fromMaybe "") $ each' translations
+    translated = getConst $ eachT formatColumn translations
+    formatColumn translation = Const $ fromMaybe "" translation <> ";"
 
 formatLocalisation :: [Entry] -> Text
 formatLocalisation = Text.unlines . fmap formatEntry

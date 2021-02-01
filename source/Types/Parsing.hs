@@ -15,7 +15,7 @@ module Types.Parsing
     , decimal
     , block
     , numericPair
-    , scriptEntry
+    , section
 
     -- | Take over the module, taking care of clashes
     , module Types
@@ -135,8 +135,8 @@ numericPair = do
     optional ws
     pure $ (key, value)
 
--- | `key = { body }`
-scriptEntry :: Text -> Parser body -> Parser body
-scriptEntry key body = sectionKey *> symbol "=" *> block body
+-- | `key = { body }` pair, aka a section.
+section :: Text -> Parser body -> Parser body
+section key body = sectionKey *> symbol "=" *> block body
   where
     sectionKey = lexeme (string' key) <?> [i|entry key ‘${ Text.unpack key }’|]

@@ -16,7 +16,7 @@ module Types
     , Identifier(..)
         , unquote
     , Key, OrderedKeys
-    , Translation, Translations, each', each''
+    , Translation, Translations', Translations, eachT, zipT
 
     , Entry
     , Localisation, OrderedLocalisation
@@ -131,11 +131,6 @@ data Identifier
     deriving stock (Show, Read, Eq, Ord, Generic)
 makePrisms ''Identifier
 
--- | May require careful use, as it can be unhygienic: unquoted identifiers may not be valid script.
-unquote :: Identifier -> Text
-unquote (QuotedIdentifier contents)     = contents
-unquote (UnquotedIdentifier identifier) = identifier
-
 instance Semigroup Identifier where
     UnquotedIdentifier lhs <> UnquotedIdentifier rhs = UnquotedIdentifier $ lhs         <> rhs
     lhs                    <> QuotedIdentifier rhs   = QuotedIdentifier   $ unquote lhs <> rhs
@@ -187,64 +182,83 @@ The anatomy of a line is as follows:
 -- raw.
 type Key = Text
 
+-- | Note: this is a projection, *not* an isomorphism half! `UnquotedIdentifier . unquote` has the
+-- potential to be unhygienic, and while `QuotedIdentifier . unquote` is hygienic the difference in
+-- constructors can be witnessed inside this program. The latter reflects a lack of roundtripping
+-- when working over actual script.
+unquote :: Identifier -> Key
+unquote (QuotedIdentifier contents)     = contents
+unquote (UnquotedIdentifier identifier) = identifier
+
 -- | Ordered set of localisation keys. That means it can be assumed there are no duplicates.
 type OrderedKeys = NonEmpty Key
 
 -- | Not everything is translated into every language, especially with mods.
 type Translation = Maybe Text
 
+-- | Base pseudo-“functor” of `Translations`.
+type Translations' item =
+    ( item -- ^ English
+    , item -- ^ French
+    , item -- ^ German
+    , item -- ^ Polish
+    , item -- ^ Spanish
+    , item -- ^ Italian
+    , item -- ^ Swedish
+    , item -- ^ Czech
+    , item -- ^ Hungarian
+    , item -- ^ Dutch
+    , item -- ^ Portuguese
+    , item -- ^ Russian
+    , item -- ^ Finnish
+    )
+
+
 -- | The translations expected of this era of PDS games. We have to be lenient because malformed
 -- localisation files are the norm rather than the exception, and the game itself accepts them.
-type Translations =
-    ( Translation -- ^ English
-    , Translation -- ^ French
-    , Translation -- ^ German
-    , Translation -- ^ Polish
-    , Translation -- ^ Spanish
-    , Translation -- ^ Italian
-    , Translation -- ^ Swedish
-    , Translation -- ^ Czech
-    , Translation -- ^ Hungarian
-    , Translation -- ^ Dutch
-    , Translation -- ^ Portuguese
-    , Translation -- ^ Russian
-    , Translation -- ^ Finnish
-    )
+type Translations = Translations' Translation
 
 -- | Control.Lens.Tuple.each only goes up to 10, which is just our luck. In any case there’s only so
 -- much one can do with tuples, too.
-each' :: Translations -> [Translation]
-each' ( english
-      , french
-      , german
-      , polish
-      , spanish
-      , italian
-      , swedish
-      , czech
-      , hungarian
-      , dutch
-      , portuguese
-      , russian
-      , finnish
-      ) = [ english
-          , french
-          , german
-          , polish
-          , spanish
-          , italian
-          , swedish
-          , czech
-          , hungarian
-          , dutch
-          , portuguese
-          , russian
-          , finnish
-          ]
+eachT :: Applicative f
+      => (a -> f b)
+      -> Translations' a
+      -> f (Translations' b)
+eachT f ( english
+        , french
+        , german
+        , polish
+        , spanish
+        , italian
+        , swedish
+        , czech
+        , hungarian
+        , dutch
+        , portuguese
+        , russian
+        , finnish
+        ) =
+            (,,,,,,,,,,,,)
+        <$> f english
+        <*> f french
+        <*> f german
+        <*> f polish
+        <*> f spanish
+        <*> f italian
+        <*> f swedish
+        <*> f czech
+        <*> f hungarian
+        <*> f dutch
+        <*> f portuguese
+        <*> f russian
+        <*> f finnish
 
--- | See each'.
-each'' :: [Translation] -> Translations
-each'' [ english
+zipT :: Applicative f
+     => (a -> b -> f c)
+     -> Translations' a
+     -> Translations' b
+     -> f (Translations' c)
+zipT f ( english
        , french
        , german
        , polish
@@ -257,28 +271,41 @@ each'' [ english
        , portuguese
        , russian
        , finnish
-       ] = ( english
-           , french
-           , german
-           , polish
-           , spanish
-           , italian
-           , swedish
-           , czech
-           , hungarian
-           , dutch
-           , portuguese
-           , russian
-           , finnish
-           )
-each'' _ =
-    error "Types.each'': non-exhaustive pattern match, is the argument iso to `Translations`?"
+       )
+       ( english'
+       , french'
+       , german'
+       , polish'
+       , spanish'
+       , italian'
+       , swedish'
+       , czech'
+       , hungarian'
+       , dutch'
+       , portuguese'
+       , russian'
+       , finnish'
+       ) =
+           (,,,,,,,,,,,,)
+       <$> f english    english'
+       <*> f french     french'
+       <*> f german     german'
+       <*> f polish     polish'
+       <*> f spanish    spanish'
+       <*> f italian    italian'
+       <*> f swedish    swedish'
+       <*> f czech      czech'
+       <*> f hungarian  hungarian'
+       <*> f dutch      dutch'
+       <*> f portuguese portuguese'
+       <*> f russian    russian'
+       <*> f finnish    finnish'
 
 -- | Localisation entry: a key with its associated translations.
 type Entry = (Key, Translations)
 
--- | Localisation data: keys that map to translations.
-type Localisation = HashMap Text Translations
+-- | Unordered localisation data: keys that map to translations.
+type Localisation = HashMap Key Translations
 
 -- | Ordered localisation data.
 type OrderedLocalisation = [Entry]

@@ -133,13 +133,13 @@ traitsStructure = do
 
         (,) <$> toPermutation
                 (
-                    scriptEntry "personality" $ do
+                    section "personality" $ do
                         (,) <$> nullTrait "personality" "no_personality" <*> traits "personality"
                 )
 
             <*> toPermutation
                 (
-                    scriptEntry "background" $ do
+                    section "background" $ do
                         (,) <$> nullTrait "background" "no_background" <*> traits "background"
                 )
 
@@ -177,7 +177,7 @@ Duplicates are neither supported by the game nor this tool.
 
   where
     nullTrait kind key =
-        (Trait <$> pure (UnquotedIdentifier key) <*> scriptEntry key (many' modifier)) <?> descr
+        (Trait <$> pure (UnquotedIdentifier key) <*> section key (many' modifier)) <?> descr
       where
         key'  = Text.unpack key
         kind' = Text.unpack kind
@@ -245,7 +245,7 @@ lineariseTraits traits = traits
             }
 
 -- | Present linearised traits as a mapping from raw trait identifier to mods.
-lineariseMods :: Traits BiList Grouped -> HashMap Text (HashMap Text Decimal)
+lineariseMods :: Traits BiList Grouped -> HashMap Key (HashMap Text Decimal)
 lineariseMods = HashMap.fromList . deTrait . reTrait . deTraits
   where
     deTraits = toListOf $ traitsBackgrounds . degroup

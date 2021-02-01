@@ -25,6 +25,8 @@ instance IsString Translation where
 nt :: Translation
 nt = Nothing
 
+-- | Not to be confused with a lack of translation. Sometimes a key is provided with all empty
+-- translations, e.g. comments.
 nt' :: Translations
 nt' = (nt, nt, nt, nt, nt, nt, nt, nt, nt, nt, nt, nt, nt)
 
