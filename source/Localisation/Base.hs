@@ -25,25 +25,27 @@ instance IsString Translation where
 nt :: Translation
 nt = Nothing
 
--- | Not to be confused with a lack of translation. Sometimes a key is provided with all empty
--- translations, e.g. comments.
-nt' :: Translations
-nt' = (nt, nt, nt, nt, nt, nt, nt, nt, nt, nt, nt, nt, nt)
+-- | Not to be confused with a missing localisation entry. Sometimes a key is provided with all
+-- empty translations, e.g. comments.
+nt' :: TranslationsRepresentation
+nt' =
+    (nt, nt, nt, nt, nt, nt, nt, nt, nt, nt, nt, nt, nt)
 
 -- | Unmodded-style translation: English, French, German, Spanish
-t :: (Translation, Translation, Translation, Translation) -> Translations
+t :: (Translation, Translation, Translation, Translation) -> TranslationsRepresentation
 t (english, french, german, spanish) =
     (english, french, german, nt, spanish, nt, nt, nt, nt, nt, nt, nt, nt)
 
--- | Pseudo-translation that is invisible in the UI.
-hide :: Translations
-hide = ("\ESC", "\ESC", "\ESC", "\ESC", "\ESC", "\ESC", "\ESC", "\ESC", "\ESC", "\ESC", "\ESC", "\ESC", "\ESC")
+-- | Pseudo-translation that is invisible in the UI. (‘*’ is a special value.)
+hide :: TranslationsRepresentation
+hide =
+    ("*", "*", "*", "*", "*", "*", "*", "*", "*", "*", "*", "*", "*")
 
 -- | Base game translations. We inline them because the source `text.csv` file has per-column
 -- encodings, which is a real headache—and as things are it cannot be parsed by the program. As a
 -- side-benefit, this spares the user from having to pass in the base game path.
 baseLocalisation :: Localisation
-baseLocalisation = HashMap.fromList
+baseLocalisation = coerce $ HashMap.fromList
     [ ("aggressive"
       , t ( "Aggressive"
           , "Agressif"

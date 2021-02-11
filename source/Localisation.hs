@@ -24,8 +24,11 @@ import qualified Hardcoded
 import Types.Parsing
 import Localisation.Base
 
+entries :: [(Key, TranslationsRepresentation)] -> [Entry]
+entries = coerce
+
 localisationHeader' :: [Entry]
-localisationHeader' =
+localisationHeader' = entries
     [ ("### This localisation file has been automatically generated ###"
       , ( "English"
         , "French"
@@ -46,22 +49,25 @@ localisationHeader' =
       , nt')
     ]
 
-localisationPreamble' :: [Entry]
-localisationPreamble' =
-    [ ( "## unused?" -- TODO sort out & remove
-      , nt')
-    , ( "UV_PERSONALITY"
-      , t ( "?Personality: $VAL$"
+{-
+These keys appear unused by the UI:
+
+    [ ( "UV_PERSONALITY"
+      , t ( "Personality: $VAL$"
           , "Personnalité : $VAL$"
           , "Persönlichkeit: $VAL$"
           , "Personalidad: $VAL$") )
     , ( "UV_BACKGROUND"
-      , t ( "?Background: $VAL$"
+      , t ( "Background: $VAL$"
           , "Caractéristique : $VAL$"
           , "Hintergrund: $VAL$"
           , "Historial: $VAL$") )
+    ]
+-}
 
-    , ( "## UI tweaks"
+localisationPreamble' :: [Entry]
+localisationPreamble' = entries
+    [ ( "## UI tweaks"
       , nt')
     , ( "MILITARY_PERSONALITY"
       , hide)
@@ -126,20 +132,20 @@ row = do
     crud
 
     pure $ (key
-           , ( english
-             , french
-             , german
-             , polish
-             , spanish
-             , italian
-             , swedish
-             , czech
-             , hungarian
-             , dutch
-             , portuguese
-             , russian
-             , finnish
-             )
+           , Translations ( english
+                          , french
+                          , german
+                          , polish
+                          , spanish
+                          , italian
+                          , swedish
+                          , czech
+                          , hungarian
+                          , dutch
+                          , portuguese
+                          , russian
+                          , finnish
+                          )
            )
 
       where
@@ -201,6 +207,8 @@ extendLocalisation baseGameLocalisation localisation = case baseGameLocalisation
 
 -- | Compute the localisation of combining personalities and backgrounds into linear trait pairs.
 -- Reports orphan keys (i.e. those that had no localisation entries) on the side.
+--
+-- Also uses modifier data to produce stat summaries in the translations.
 lineariseLocalisation :: HashMap Key (HashMap Text Decimal)
                       -> Localisation
                       -> OrderedKeys
@@ -235,39 +243,47 @@ lineariseLocalisation linearisedTraits localisation personalities' backgrounds' 
         personalityTranslations, backgroundTranslations, translations :: Translations
         personalityTranslations = translation personality
         backgroundTranslations  = translation background
-        translations = runIdentity $ zipT
-            (\pers bg -> Identity $ liftA2 (concatTraits personality background) pers bg)
+        translations = liftA2
+            (liftA2 $ concatTraits personality background)
             personalityTranslations
             backgroundTranslations
 
+    concatTraits :: Key -> Key -> Text -> Text -> Text
     concatTraits personality background personalityTranslation backgroundTranslation =
         Hardcoded.productTranslation personalityTranslation backgroundTranslation stats
           where
             linearisedTrait = Hardcoded.productKey personality background
             mods            = HashMap.lookup linearisedTrait linearisedTraits
 
-            signed quantity = sign quantity <> Text.pack (show quantity)
-            sign quantity | quantity < 0 = "" -- minus sign produced by `show`
-            sign _        | otherwise    = "+"
+            highlight = Hardcoded.colour Hardcoded.hpmPalette
 
-            highlight modifier' importance blanks =
-                Hardcoded.colour Hardcoded.hpmPalette modifier level
-              where
-                modifier = fromMaybe blanks                 $ signed     <$> modifier'
-                level    = fromMaybe Hardcoded.NoImportance $ importance <$> modifier'
+            stats = (attackHighlight, defenceHighlight, speedHighlight, extrasHighlight)
 
-            stats = [attackHighlight, defenceHighlight]
-            blank2 = "  " -- columns taken by values ranging from -9 to +9
-            attackMod        = HashMap.lookup Hardcoded.attack  =<< mods
-            defenceMod       = HashMap.lookup Hardcoded.defence =<< mods
-            attackHighlight  = highlight attackMod  Hardcoded.attackImportance  blank2
-            defenceHighlight = highlight defenceMod Hardcoded.defenceImportance blank2
+            (attackMod, defenceMod, speedMod, organisationMod, moraleMod) =
+                over each (\mod -> HashMap.lookup mod =<< mods)
+                    ( Hardcoded.attack
+                    , Hardcoded.defence
+                    , Hardcoded.speed
+                    , Hardcoded.organisation
+                    , Hardcoded.morale
+                    )
+
+            numericHighlight blanks format importance =
+                fromMaybe                 blanks . fmap (highlight <$> importance <*> format)
+            extraHighlight =
+                fromMaybe Hardcoded.symbolBlanks . fmap (highlight <$> id         <*> Hardcoded.importanceSymbol)
+
+            attackHighlight  = numericHighlight Hardcoded.integralBlanks   Hardcoded.formatInteger    Hardcoded.attackImportance  attackMod
+            defenceHighlight = numericHighlight Hardcoded.integralBlanks   Hardcoded.formatInteger    Hardcoded.defenceImportance defenceMod
+            speedHighlight   = numericHighlight Hardcoded.percentageBlanks Hardcoded.formatPercentage Hardcoded.speedImportance   speedMod
+            extrasHighlight  = extraHighlight (pure $ Hardcoded.extrasImportance organisationMod moraleMod)
 
 formatEntry :: Entry -> Text
-formatEntry (key, translations) = key <> ";" <> translated
+formatEntry (key, translations) = key <> ";" <> translationColumns
   where
-    translated = getConst $ eachT formatColumn translations
-    formatColumn translation = Const $ fromMaybe "" translation <> ";"
+    translationColumns =
+        Text.concat . toList $ fmap formatColumn translations -- for want of foldMap'
+    formatColumn translation = fromMaybe "" translation <> ";"
 
 formatLocalisation :: [Entry] -> Text
 formatLocalisation = Text.unlines . fmap formatEntry

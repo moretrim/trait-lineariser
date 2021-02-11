@@ -16,7 +16,12 @@ module Types
     , Identifier(..)
         , unquote
     , Key, OrderedKeys
-    , Translation, Translations', Translations, eachT, zipT
+    , Translation
+    , Translations'(..)
+        , translationsRepresentation
+        , Translations
+        , TranslationsRepresentation'
+        , TranslationsRepresentation
 
     , Entry
     , Localisation, OrderedLocalisation
@@ -32,6 +37,7 @@ module Types
     , module Data.Functor
     , module Data.Traversable
     , module Data.Foldable
+    , module Data.Coerce
     , module Data.Void
     , module Data.Maybe
     , module Data.List
@@ -57,6 +63,7 @@ import Control.Lens hiding (noneOf)
 import Data.Functor
 import Data.Traversable
 import Data.Foldable
+import Data.Coerce
 import Data.Void
 import Data.Maybe
 import Data.List hiding    (uncons)
@@ -196,110 +203,96 @@ type OrderedKeys = NonEmpty Key
 -- | Not everything is translated into every language, especially with mods.
 type Translation = Maybe Text
 
--- | Base pseudo-“functor” of `Translations`.
-type Translations' item =
-    ( item -- ^ English
-    , item -- ^ French
-    , item -- ^ German
-    , item -- ^ Polish
-    , item -- ^ Spanish
-    , item -- ^ Italian
-    , item -- ^ Swedish
-    , item -- ^ Czech
-    , item -- ^ Hungarian
-    , item -- ^ Dutch
-    , item -- ^ Portuguese
-    , item -- ^ Russian
-    , item -- ^ Finnish
-    )
+-- | The base representation of all the translations that the game expects: a homogeneous 13-tuple.
+type TranslationsRepresentation' item = ( item -- ^ English
+                                        , item -- ^ French
+                                        , item -- ^ German
+                                        , item -- ^ Polish
+                                        , item -- ^ Spanish
+                                        , item -- ^ Italian
+                                        , item -- ^ Swedish
+                                        , item -- ^ Czech
+                                        , item -- ^ Hungarian
+                                        , item -- ^ Dutch
+                                        , item -- ^ Portuguese
+                                        , item -- ^ Russian
+                                        , item -- ^ Finnish
+                                        )
 
+-- | Present the representation with more salient `Functor` & friends instances, e.g. allowing
+-- traversal of all tuple elements.
+newtype Translations' item = Translations
+    { _translationsRepresentation :: TranslationsRepresentation' item }
+    -- N.b. `Functor` & friends are not handled by the newtype strategy, which is the point of this.
+    deriving stock (Show, Read, Eq, Ord, Generic, Functor, Traversable, Foldable)
+makeLenses ''Translations'
+makeWrapped ''Translations'
 
 -- | The translations expected of this era of PDS games. We have to be lenient because malformed
 -- localisation files are the norm rather than the exception, and the game itself accepts them.
 type Translations = Translations' Translation
 
--- | Control.Lens.Tuple.each only goes up to 10, which is just our luck. In any case there’s only so
--- much one can do with tuples, too.
-eachT :: Applicative f
-      => (a -> f b)
-      -> Translations' a
-      -> f (Translations' b)
-eachT f ( english
-        , french
-        , german
-        , polish
-        , spanish
-        , italian
-        , swedish
-        , czech
-        , hungarian
-        , dutch
-        , portuguese
-        , russian
-        , finnish
-        ) =
-            (,,,,,,,,,,,,)
-        <$> f english
-        <*> f french
-        <*> f german
-        <*> f polish
-        <*> f spanish
-        <*> f italian
-        <*> f swedish
-        <*> f czech
-        <*> f hungarian
-        <*> f dutch
-        <*> f portuguese
-        <*> f russian
-        <*> f finnish
+type TranslationsRepresentation = TranslationsRepresentation' Translation
 
-zipT :: Applicative f
-     => (a -> b -> f c)
-     -> Translations' a
-     -> Translations' b
-     -> f (Translations' c)
-zipT f ( english
-       , french
-       , german
-       , polish
-       , spanish
-       , italian
-       , swedish
-       , czech
-       , hungarian
-       , dutch
-       , portuguese
-       , russian
-       , finnish
-       )
-       ( english'
-       , french'
-       , german'
-       , polish'
-       , spanish'
-       , italian'
-       , swedish'
-       , czech'
-       , hungarian'
-       , dutch'
-       , portuguese'
-       , russian'
-       , finnish'
-       ) =
-           (,,,,,,,,,,,,)
-       <$> f english    english'
-       <*> f french     french'
-       <*> f german     german'
-       <*> f polish     polish'
-       <*> f spanish    spanish'
-       <*> f italian    italian'
-       <*> f swedish    swedish'
-       <*> f czech      czech'
-       <*> f hungarian  hungarian'
-       <*> f dutch      dutch'
-       <*> f portuguese portuguese'
-       <*> f russian    russian'
-       <*> f finnish    finnish'
+instance Applicative Translations' where
+    pure text = coerce ( text
+                       , text
+                       , text
+                       , text
+                       , text
+                       , text
+                       , text
+                       , text
+                       , text
+                       , text
+                       , text
+                       , text
+                       , text
+                       )
+
+    (<*>) (Translations ( english
+                        , french
+                        , german
+                        , polish
+                        , spanish
+                        , italian
+                        , swedish
+                        , czech
+                        , hungarian
+                        , dutch
+                        , portuguese
+                        , russian
+                        , finnish
+                        )
+          )
+          (Translations ( english'
+                        , french'
+                        , german'
+                        , polish'
+                        , spanish'
+                        , italian'
+                        , swedish'
+                        , czech'
+                        , hungarian'
+                        , dutch'
+                        , portuguese'
+                        , russian'
+                        , finnish'
+                        )
+          ) = Translations ( english    english'
+                           , french     french'
+                           , german     german'
+                           , polish     polish'
+                           , spanish    spanish'
+                           , italian    italian'
+                           , swedish    swedish'
+                           , czech      czech'
+                           , hungarian  hungarian'
+                           , dutch      dutch'
+                           , portuguese portuguese'
+                           , russian    russian'
+                           , finnish    finnish'
+                           )
 
 -- | Localisation entry: a key with its associated translations.
 type Entry = (Key, Translations)
