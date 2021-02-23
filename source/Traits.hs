@@ -35,6 +35,7 @@ import qualified Data.Text as Text
 
 import qualified Hardcoded
 import Types.Parsing
+import Format
 
 -----------
 -- Parse --
@@ -122,7 +123,7 @@ modifier = numericPair
 
 -- | Trait parser
 trait :: Parser Trait'
-trait = Trait <$> identifier <*> (symbol "=" *> block (many' modifier))
+trait = uncurry Trait <$> pair identifier (block $ many' modifier)
 
 -- | `common/traits.txt` structure, parsed into a `Traits`.
 traitsStructure :: Parser (Traits' NonEmpty)
@@ -240,7 +241,7 @@ lineariseTraits traits = traits
                     overlapOverride item = item
 
         unitPersonality = Trait
-            { _traitName = UnquotedIdentifier "unit_personality"
+            { _traitName = Hardcoded.unitPersonalityIdentifier
             , _traitMods = mempty
             }
 
@@ -262,27 +263,6 @@ lineariseMods = HashMap.fromList . deTrait . reTrait . deTraits
 -- Format --
 ------------
 
-indent :: Int -> Text
-indent level = Text.replicate (level * 4) " "
-
-indentedLineBreak :: Text -> Int -> Text
-indentedLineBreak lineBreak level = lineBreak <> indent level
-
-offset :: Text -> Int -> [Text] -> Text
-offset lineBreak level = Text.concat . fmap (indentedLineBreak lineBreak level <>)
-
-offset' :: Int -> [Text] -> Text
-offset' = offset "\n"
-
-formatBlock :: Int -> Text -> Text
-formatBlock level body = [iTrim|
-    {${body}${ if Text.null body then "" else indentedLineBreak "\n" level }}
-|]
-
-formatIdentifier :: Identifier -> Text
-formatIdentifier (QuotedIdentifier contents)     = "\"" <> contents <> "\""
-formatIdentifier (UnquotedIdentifier identifier') = identifier'
-
 formatMod :: Interspersed Mod -> Text
 formatMod (Parsed (key, value)) = [iTrim|${formatIdentifier key} = ${value}|]
 formatMod (Comment comment) = comment
@@ -290,22 +270,22 @@ formatMod (Comment comment) = comment
 formatTrait :: Int -> Trait' -> Text
 formatTrait level item = [iTrim|
 ${ formatIdentifier $ _traitName item } = ${
-    formatBlock level . offset' (succ level) . fmap formatMod $ _traitMods item }
+    formatLines level . fmap formatMod $ _traitMods item }
 |]
 
 formatTrait' :: Int -> Trait BiList -> Text
 formatTrait' level (Trait name (bi -> (personalityMods, backgroundMods))) = [iTrim|
-${ formatIdentifier $ name } = ${
+${ formatIdentifier name } = ${
     formatBlock level $
-           (offset' (succ level) . toList . fmap formatMod $ personalityMods)
+           (offset (succ level) . toList . fmap formatMod $ personalityMods)
         <> indentedLineBreak "\n" (succ level) <> Hardcoded.productSeparator
-        <> (offset' (succ level) . toList . fmap formatMod $ backgroundMods) }
+        <> (offset (succ level) . toList . fmap formatMod $ backgroundMods) }
 |]
 
 -- | Trait stat summary. Not to be confused with `formatTrait`.
 modSummary :: Int -> [Interspersed Mod] -> Text
 modSummary level mods = [iTrim|
-${offset' level . fmap (("## " <>) . formatMod) $ mods}
+${offset level . fmap (("## " <>) . formatMod) $ mods}
 |]
 
 formatGroup :: Int -> (Trait', NonEmpty (Trait BiList)) -> Text
@@ -313,13 +293,13 @@ formatGroup level (groupLeader, traits) = [iTrim|
 ## #${formatIdentifier $ _traitName groupLeader}${
     modSummary level $ _traitMods groupLeader
 }${
-    offset "\n\n" level . toList $ fmap (formatTrait' level) traits
+    offsetWith "\n\n" level . toList $ fmap (formatTrait' level) traits
 }
 |]
 
 formatGroups :: Int -> Grouped (Trait BiList) -> Text
 formatGroups level (getCompose . getCompose -> groups) =
-    offset "\n\n" level . toList . fmap (formatGroup level) $ groups
+    offsetWith "\n\n" level . toList . fmap (formatGroup level) $ groups
 
 lineariserHeader :: Text
 lineariserHeader = [iTrim|

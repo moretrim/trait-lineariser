@@ -14,7 +14,7 @@ module Types
         , apI, liftI2
 
     , Identifier(..)
-        , unquote
+        , unquote, formatIdentifier
     , Key, OrderedKeys
     , Translation
     , Translations'(..)
@@ -25,6 +25,25 @@ module Types
 
     , Entry
     , Localisation, OrderedLocalisation
+
+    , LeaderKind(..), _LeaderGeneral, _LeaderAdmiral, formatLeaderKind
+    , Leader(..)
+        , leaderName
+        , leaderPicture
+        , leaderDate
+        , leaderKind
+        , leaderPersonality
+        , leaderBackground
+        , leaderPrestige
+    , LeaderEntry(..)
+        , _LeaderFragment
+        , _LeaderEntry
+
+    , UnitKind(..), _UnitArmy, _UnitNavy, formatUnitKind
+    , Unit(..), unitKind, unitEntries
+
+    , OobEntry(..), _OobFragment, _OobUnit, _OobLeader
+    , Oob
 
     -- Convenience re-exports
 
@@ -85,7 +104,7 @@ import Data.Decimal        (Decimal)
 data BaseGameLocalisation
     = IncludeBaseGame
     | NoIncludeBaseGame
-    deriving stock (Show, Read, Eq, Ord, Enum, Generic)
+    deriving stock (Show, Read, Eq, Ord, Enum, Bounded, Generic)
 
 ---------------------
 -- General parsing --
@@ -145,6 +164,10 @@ instance Semigroup Identifier where
 
 instance Monoid Identifier where
     mempty = QuotedIdentifier ""
+
+formatIdentifier :: Identifier -> Text
+formatIdentifier (QuotedIdentifier contents)     = "\"" <> contents <> "\""
+formatIdentifier (UnquotedIdentifier identifier') = identifier'
 
 ------------------
 -- Localisation --
@@ -302,3 +325,63 @@ type Localisation = HashMap Key Translations
 
 -- | Ordered localisation data.
 type OrderedLocalisation = [Entry]
+
+-- | Victoria II distinguishes between generals and admirals, though overall the leader system uses
+-- the same traits for all.
+data LeaderKind
+    = LeaderGeneral
+    | LeaderAdmiral
+    deriving stock (Show, Read, Eq, Ord, Enum, Bounded, Generic)
+makePrisms ''LeaderKind
+
+formatLeaderKind :: LeaderKind -> Text
+formatLeaderKind = \case LeaderGeneral -> "land"; LeaderAdmiral -> "sea"
+
+data Leader = Leader
+    { _leaderName        :: Identifier
+    , _leaderPicture     :: Maybe Text
+    , _leaderDate        :: Text
+    , _leaderKind        :: LeaderKind
+    , _leaderPersonality :: Identifier
+    , _leaderBackground  :: Identifier
+    , _leaderPrestige    :: Maybe Decimal
+    }
+    deriving stock (Show, Read, Eq, Ord, Generic)
+makeLenses ''Leader
+
+-- | Alternation between a `leader = { … }` section or some `not-leader = { … }` entry. Iso to
+-- `Either Text Leader`. Used for interleaving.
+data LeaderEntry
+    = LeaderFragment Text -- ^ Not a leader, stored in raw textual form.
+    | LeaderEntry    Leader
+    deriving stock (Show, Read, Eq, Ord, Generic)
+makePrisms ''LeaderEntry
+
+data UnitKind
+    = UnitArmy
+    | UnitNavy
+    deriving stock (Show, Read, Eq, Ord, Enum, Bounded, Generic)
+makePrisms ''UnitKind
+
+formatUnitKind :: UnitKind -> Text
+formatUnitKind = \case UnitArmy -> "army"; UnitNavy -> "navy"
+
+data Unit = Unit
+    { _unitKind    :: UnitKind
+    , _unitEntries :: [LeaderEntry]
+    }
+    deriving stock (Show, Read, Eq, Ord, Generic)
+makeLenses ''Unit
+
+data OobEntry
+    = OobFragment Text   -- ^ Non-leader related blob
+    | OobUnit     Unit   -- ^ Unit with assigned leaders, i.e. `_unitEntries` guaranteed to contain
+                         -- at least one `LeaderEntry` constructor
+    | OobLeader   Leader -- ^ Unassigned leader
+    deriving stock (Show, Read, Eq, Ord, Generic)
+makePrisms ''OobEntry
+
+-- | Distinguished special case: `Left raw` is the representation for an oob file that defines no
+-- leader. `Right frags` interleaves leader definitions (including those inside unit definitions)
+-- with raw file fragments.
+type Oob = [OobEntry]

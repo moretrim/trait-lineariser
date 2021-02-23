@@ -22,8 +22,10 @@ import Data.Encoding.CP1252
 import Text.Megaparsec hiding                (count)
 
 import System.Exit                           (exitFailure)
-import System.FilePath                       ((</>), takeFileName, takeExtension)
-import System.Directory                      (doesPathExist, listDirectory, renameDirectory)
+import System.FilePath                       ((</>), takeDirectory, takeFileName, takeExtension)
+import System.Directory                      (doesPathExist, doesDirectoryExist
+                                             , listDirectory
+                                             , createDirectoryIfMissing, renameDirectory)
 import System.IO.Temp                        (withTempDirectory)
 import System.IO.Encoding                    (readFile, writeFile)
 
@@ -39,18 +41,40 @@ import Types
 import Traits
 import Localisation.Base
 import Localisation
+import Oob
 
-noteBriefly :: String -> IO ()
+noteBriefly :: Text -> IO ()
 noteBriefly = outputConcurrent
 
-note :: String -> IO ()
+note :: Text -> IO ()
 note = noteBriefly . (<> "\n")
 
-note' :: [String] -> IO ()
+note' :: [Text] -> IO ()
 note' = note . mconcat
 
-noteFailure :: String -> IO noreturn
+noteFailure :: Text -> IO noreturn
 noteFailure message = note message *> exitFailure
+
+-- | Type restriction for better inference.
+consoleRegion :: (LiftRegion m) => ConsoleRegion -> Text -> m ()
+consoleRegion = setConsoleRegion
+
+-- | Type restriction for better inference.
+append :: (LiftRegion m) => ConsoleRegion -> Text -> m ()
+append = appendConsoleRegion
+
+-- | Like `finishConsoleRegion`, but append to current region contents.
+concludeWith :: (LiftRegion m) => ConsoleRegion -> Text -> m ()
+concludeWith region suffix = liftRegion $ do
+    contents <- getConsoleRegion region
+    finishConsoleRegion region (contents <> suffix)
+
+-- | Like `finishConsoleRegion`, but preserve current region contents.
+conclude :: (LiftRegion m) => ConsoleRegion -> m ()
+conclude region = liftRegion $ finishConsoleRegion region =<< getConsoleRegion region
+
+filePath :: FilePath -> Text
+filePath = Text.pack
 
 -- | Read a game or mod file. Uses the CP1252 encoding that Victoria II expects.
 fileContents :: FilePath -> IO (Either DecodingException Text)
@@ -65,8 +89,14 @@ fileContents path = handle decodingError $ do
     decodingError :: DecodingException -> IO (Either DecodingException Text)
     decodingError err = pure $ Left err
 
-localisationContents :: BaseGameLocalisation -> FilePath -> FilePath -> IO Text
-localisationContents baseGameLocalisation base path = do
+decodingFailure :: Text -> FilePath -> DecodingException -> IO noreturn
+decodingFailure what path err = noteFailure [iTrim|
+Decoding of ${what} ‘${ filePath path }’ failed, aborting:
+    ${err}
+|]
+
+localisationContents :: ConsoleRegion -> BaseGameLocalisation -> FilePath -> FilePath -> IO Text
+localisationContents region baseGameLocalisation base path = do
     contents <- fileContents path
     case contents of
         Left err -> do
@@ -74,22 +104,21 @@ localisationContents baseGameLocalisation base path = do
             if takeFileName base == "Victoria 2"
                 && ("localisation" </> "text.csv") `isSuffixOf` path
                 then if baseGameLocalisation == IncludeBaseGame
-                         then note [iTrim|
+                         then append region [i|
 Decoding of localisation file failed:
-    ‘${ path }’: ${err}
+    ‘${ filePath path }’: ${err}
 But it looks like it is base game ‘text.csv’ file, which translations are already incorporated into
 this program. Continuing.
 |]
-                         else note [iTrim|
+                         else append region [i|
 Decoding of localisation file failed:
-    ‘${ path }’: ${err}
+    ‘${ filePath path }’: ${err}
 But it looks like it is base game ‘text.csv’ file. If you want to use base game localisation,
 consider using `--include-base-game` (refer to `--help`). Continuing after skipping the file.
 |]
-                else note [iTrim|
+                else append region [i|
 Decoding of one localisation file failed, skipping it:
-    ‘${ path }’: ${err}
-|]
+    ‘${ filePath path }’: ${err}|]
 
             -- We get away with this because an empty localisation file is valid and corresponds
             -- to no entry at all.
@@ -117,7 +146,7 @@ parseArgs = Args.execParser $ Args.info (Args.helper <*> args) desc
     modPath = Args.strArgument $
         help [ [iTrim|
 Base path to the mod of interest. Contents at that location should conform to the usual structure
-for mod files, so that the traits file (`common/traits.txt`) as well as localisation information can
+for mod files, so that the traits file (‘common/traits.txt’) as well as localisation information can
 be found. (If the mod is not yet providing a traits file, you should copy over the unmodded traits
 file.)
 |]
@@ -138,7 +167,7 @@ final localisation file.
 |]
                 , [iTrim|
 Order is significant: entries that come from a path that is passed in early are favoured over those
-that come after.
+that come after. (Though extra paths are never processed before the base path of interest.)
 |]
                 , [iTrim|
 You do NOT need to pass in the path to the game. Base game translations are already incorporated
@@ -151,7 +180,7 @@ into this program. (But also see: --no-include-base-game.)
         Args.long "include-base-game"
         <> help [ [iTrim|
 Include the base game translations when computing the localisation file. This is the default
-behaviour because base game file `localisation/text.csv` is tricky to decode.
+behaviour because base game file ‘localisation/text.csv’ is tricky to decode.
 |]
                 , [iTrim|
 Base game translations are always considered last so that any other localisation you pass to the
@@ -204,109 +233,184 @@ main = displayConsoleRegions $ do
         localisationPath base      = base </> "localisation"
         localisationFile base path = localisationPath base </> path
 
-    let badTraits err = noteFailure [iTrim|
-Decoding of traits file ‘${traitsPath}’ failed, aborting:
-    ${ err }
-|]
-    traitsContent <- either badTraits pure =<< fileContents traitsPath
+        oobBase = modPath </> "history" </> "units"
+
+    traitsContent <- either (decodingFailure "traits files" traitsPath) pure =<< fileContents traitsPath
 
     outputUnavailable <- doesPathExist Hardcoded.outputBase
     when outputUnavailable $ do
         noteFailure [iTrim|
-Output destination ‘${Hardcoded.outputBase}’ already exists, aborting.
+Output destination ‘${ filePath Hardcoded.outputBase }’ already exists, aborting.
 |]
 
     when (lineariserHeader `Text.isPrefixOf` traitsContent) $ do
         noteFailure [iTrim|
-Traits file ‘${traitsPath}’ seems to already have been auto-generated by this program, aborting. If
-you still want to attempt to linearise the file, remove the auto-generation header:
+Traits file ‘${ filePath traitsPath }’ seems to already have been auto-generated by this program,
+aborting. If you still want to attempt to linearise the file, remove the auto-generation header:
 
-${ Text.unpack lineariserHeader }
+${ lineariserHeader }
 |]
 
-    traits <- case runParser traitsStructure traitsPath traitsContent of
-        Left errs -> do
-            noteFailure [iTrim|
+    let parseTraits traitsRegion = do
+            consoleRegion traitsRegion [i|Adding traits from mod file ‘${ filePath traitsPath }’…|]
+            case runParser traitsStructure traitsPath traitsContent of
+                Left errs -> do
+                    noteFailure [iTrim|
 Parsing of traits file failed:
 
 ${ errorBundlePretty errs }
 |]
 
-        Right traits -> do
-            let personalities = length $ _traitsPersonalities traits
-                backgrounds   = length $ _traitsBackgrounds traits
+                Right traits -> do
+                    let personalities = length $ _traitsPersonalities traits
+                        backgrounds   = length $ _traitsBackgrounds traits
 
-            for_ [ ("personality", personalities)
-                 , ("background", backgrounds)
-                 ] $ \(kind, count) -> when (count == 1) $ do
-                      noteFailure [iTrim|
-Nothing to linearise as there is only one ${kind::String}, aborting. (Did you run the program on an
+                    for_ [ ("personality", personalities)
+                        , ("background", backgrounds)
+                        ] $ \(kind, count) -> when (count == 1) $ do
+                            noteFailure [iTrim|
+Nothing to linearise as there is only one ${kind::Text}, aborting. (Did you run the program on an
 already linearised trait file?)
 |]
 
-            note' [ [i|Found ${personalities} personalities and ${backgrounds} backgrounds,|]
-                  , [i| linearising to ${ personalities * backgrounds } composite traits.|]
-                  ]
+                    concludeWith traitsRegion $ "\n    " <> [iTrim|
+…found ${personalities} personalities and ${backgrounds} backgrounds, linearising to ${
+personalities * backgrounds } composite traits.
+|]
 
-            pure traits
+                    pure traits
 
-    localisation' <- fmap (HashMap.unions . concat) . forConcurrently paths $ \base ->
-        withConsoleRegion Linear $ \pathProgress -> do
-            let opener = [i|Adding localisation from base path ‘${base}’…|] :: String
-            setConsoleRegion pathProgress opener
+        parseLocalisation localisationRegion =
+            fmap (HashMap.unions . concat) $ do
+                consoleRegion localisationRegion [iTrim|
+Reading localisation from ${ length paths } base path(s)…
+|]
 
-            let pickCSVs = filter csvExtension
-                csvExtension = (== ".csv") . takeExtension
+                forConcurrently paths $ \base -> do
+                    let pickCSVs = filter csvExtension
+                        csvExtension = (== ".csv") . takeExtension
 
-            -- N.b. order is very significant. The key that appears in the first file in lexical[1]
-            -- order is the one that sets the translation, subsequent ones are redundant.
-            --
-            -- [1]: presumably, at any rate, since this has not been tested in depth
-            locFiles <- (sort . pickCSVs) <$> listDirectory (localisationPath base)
+                    -- N.b. order is very significant. The key that appears in the first file in
+                    -- lexical[1] order is the one that sets the translation, subsequent ones are
+                    -- redundant.
+                    --
+                    -- [1]: presumably, at any rate, since this has not been tested in depth
+                    locFiles <- (sort . pickCSVs) <$> listDirectory (localisationPath base)
 
-            finishConsoleRegion pathProgress $ opener
-                <> [i| found ${ length locFiles } localisation files.|]
+                    append localisationRegion $ "\n    " <> [iTrim|
+…adding ${ length locFiles } localisation files from base path ‘${ filePath base }’…
+|]
 
-            forConcurrently locFiles $ \path -> do
-                contents <-
-                    localisationContents baseGameLocalisation base $ localisationFile base path
-                case runParser localisations path contents of
-                    Left errs -> do
-                        note [iTrim|
+                    forConcurrently locFiles $ \path -> do
+                        contents <-
+                            localisationContents localisationRegion baseGameLocalisation base $
+                                localisationFile base path
+                        case runParser localisations path contents of
+                            Left errs -> do
+                                append localisationRegion [i|
 Parsing of one localisation file failed, skipping it:
     ${ errorBundlePretty errs }
 |]
-                        pure mempty
 
-                    Right keys -> pure keys
+                                pure mempty
+
+                            Right keys -> do
+                                pure keys
+
+        parseOob oobRegion = do
+            consoleRegion oobRegion [iTrim|
+Adding order-of-battle files from mod path ‘${ filePath oobBase }’…
+|]
+
+            oobListing <- listDirectory oobBase
+            let partitionM pred = foldrM (selectM pred) (mempty, mempty)
+                selectM pred item ~(accepted, rejected) = do
+                    ok <- pred item
+                    pure $ if ok then (item:accepted, rejected) else (accepted, item:rejected)
+
+                parseOobFile target = do
+                    let path = oobBase </> target
+                    contents <- either (decodingFailure "order-of-battle file" path) pure =<< fileContents path
+                    case runParser oob path contents of
+                        Left errs -> noteFailure [iTrim|
+Parsing of OOB file ‘${ filePath path }’ failed:
+
+${ errorBundlePretty errs }
+|]
+
+                        Right (Right parsed) -> pure [(target, parsed)]
+
+                        _ -> pure mempty
+
+                oobPath listing = oobBase </> listing
+                isBookmark = doesDirectoryExist . oobPath
+                isOobFile  = (== ".txt") . takeExtension
+                targetPath bookmark = fmap (bookmark </>) . filter isOobFile
+                listOobFiles bookmark = targetPath bookmark <$> listDirectory (oobPath bookmark)
+
+            (bookmarks, oobFiles') <- partitionM isBookmark oobListing
+            bookmarkFiles <- mconcat <$> traverse listOobFiles bookmarks
+            let oobFiles = targetPath "." oobFiles' <> bookmarkFiles
+            oobEntries <- mconcat <$> mapM parseOobFile oobFiles
+
+            concludeWith oobRegion $ "\n    " <> mconcat
+                [ [i|…found ${ length oobFiles } order-of-battle files across|]
+                , [i| ${ succ $ length bookmarks } start date(s), ${ length oobEntries } of which|]
+                , [i| contain leader definitions.|]
+                ]
+
+            pure oobEntries
+
+    let initRegion = openConsoleRegion Linear
+    traitsRegion       <- initRegion
+    localisationRegion <- initRegion
+    oobRegion          <- initRegion
+    ((traits, localisation'), oobs) <-
+        parseTraits traitsRegion
+            `concurrently` parseLocalisation localisationRegion
+            `concurrently` parseOob oobRegion
 
     case baseGameLocalisation of
-        IncludeBaseGame   -> note [iTrim|
-Found ${ HashMap.size localisation' } localisation entries, and adding to it ${ HashMap.size baseLocalisation } base game entries.
-|]
-        NoIncludeBaseGame -> note [i|Found ${ HashMap.size localisation' } localisation entries.|]
+        IncludeBaseGame   -> append localisationRegion $ "\n" <> mconcat
+            [ [i|Found ${ HashMap.size localisation' } entries across all localisation files,|]
+            , [i| and adding to it ${ HashMap.size baseLocalisation } base game entries.|]
+            ]
+        NoIncludeBaseGame -> append localisationRegion [i|
+Found ${ HashMap.size localisation' } entries across all localisation files.|]
+
+    conclude localisationRegion
 
     -- Compute everything!…
-    let !localisation                      = extendLocalisation baseGameLocalisation localisation'
-        !linearisedTraits                  = lineariseTraits traits
-        !linearisedMods                    = lineariseMods linearisedTraits
-        (!personalities, !backgrounds)      = traitsLocalisationKeys traits
-        (!orphans, !linearisedLocalisation) =
+    let localisation                      = extendLocalisation baseGameLocalisation localisation'
+        linearisedTraits                  = lineariseTraits traits
+        linearisedMods                    = lineariseMods linearisedTraits
+        (personalities, backgrounds)      = traitsLocalisationKeys traits
+        (orphans, linearisedLocalisation) =
             lineariseLocalisation linearisedMods localisation personalities backgrounds
+        linearisedOobs = oobs & mapped . _2 %~ lineariseOob
 
     when (not $ null orphans) $ do
         note [iTrim|
 The following traits were missing a translation:
-    ${ Text.unpack . Text.intercalate ", " $ toList orphans }
+    ${ Text.intercalate ", " $ toList orphans }
 (If you did not expect this, you might want to use `--help` and read about `--extra-localisation`
 and/or `--include-base-game`.)
 |]
 
     -- …and then write it out.
     withTempDirectory "." Hardcoded.outputBase $ \outputPath -> do
-        let write path = let ?enc = CP1252 in writeFile (outputPath </> path) . Text.unpack
-        write "traits.txt" . formatTraits       $ linearisedTraits
-        write "traits.csv" . formatLocalisation $ linearisedLocalisation
+        let ?enc = CP1252
+        let write path contents = do
+                let target = outputPath </> path
+                createDirectoryIfMissing {-- create parents --} True $ takeDirectory target
+                writeFile target $ Text.unpack contents
+            writeOob path = write (Hardcoded.oobOutput </> path)
+
+        write Hardcoded.traitsOutput       . formatTraits       $ linearisedTraits
+        write Hardcoded.localisationOutput . formatLocalisation $ linearisedLocalisation
+        forM_ linearisedOobs $ \(target, oob) -> do
+            writeOob target $ formatOob oob
+
         renameDirectory outputPath Hardcoded.outputBase
 
     note [i|Done!|]

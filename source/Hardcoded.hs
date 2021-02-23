@@ -8,7 +8,8 @@ what is being done.
 
 |-}
 module Hardcoded
-    ( productIdentifier
+    ( traitsOutput, localisationOutput, oobOutput
+    , unitPersonalityIdentifier, productIdentifier
     , productKey
     , productSeparator
     , productTranslation
@@ -36,10 +37,32 @@ module Hardcoded
     , outputBase
     ) where
 
+
 import qualified Data.Text as Text
 import Text.Printf                 (printf)
 
+import System.FilePath             ((</>))
+
 import Types
+
+-- | Path to linearised trait file.
+traitsOutput :: FilePath
+traitsOutput = "linearised-traits.txt"
+
+-- | Path to linearised trait localisation.
+localisationOutput :: FilePath
+localisationOutput = "linearised-traits.csv"
+
+-- | Path to linearised oob directory.
+oobOutput :: FilePath
+oobOutput = "history" </> "units"
+
+-- | Identifier of the unit personality.
+unitPersonality :: Text
+unitPersonality = "unit_personality"
+
+unitPersonalityIdentifier :: Identifier
+unitPersonalityIdentifier = UnquotedIdentifier unitPersonality
 
 -- | The product of one personality identifier with one background identifier.
 productIdentifier :: Identifier -> Identifier -> Identifier

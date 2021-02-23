@@ -71,6 +71,7 @@ common properties
         -- executable-static: True
 
     build-depends: base == 4.*,
+                   mtl == 2.*,
                    lens == 4.*,
                    hashable == 1.*,
                    unordered-containers == 0.2.*,
@@ -81,16 +82,21 @@ common properties
                    parser-combinators == 1.*
 
 executable trait-lineariser
-    import:         properties
-    hs-source-dirs: source
-    main-is:        CLI.hs
-    other-modules:  Types, Types.Parsing, Hardcoded, Traits, Localisation.Base, Localisation
+    import:             properties
+    hs-source-dirs:     source
+    main-is:            CLI.hs
+    other-modules:      Types, Types.Parsing,
+                        Hardcoded,
+                        Format,
+                        Traits,
+                        Localisation.Base, Localisation,
+                        Oob
     default-extensions: ImplicitParams
-    build-depends: async == 2.*,
-                   concurrent-output == 1.*,
-                   filepath == 1.*,
-                   directory == 1.*,
-                   temporary == 1.*,
-                   encoding == 0.8.*,
-                   optparse-applicative == 0.14.*,
-                   here == 1.*
+    build-depends:      async == 2.*,
+                        concurrent-output == 1.*,
+                        filepath == 1.*,
+                        directory == 1.*,
+                        temporary == 1.*,
+                        encoding == 0.8.*,
+                        optparse-applicative == 0.14.*,
+                        here == 1.*

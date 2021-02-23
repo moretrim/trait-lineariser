@@ -1,3 +1,4 @@
+{-# LANGUAGE Rank2Types #-}
 {-|
 
 Copyright: © 2021 moretrim
@@ -8,14 +9,28 @@ Common items relating to Victoria II file parsing.
 |-}
 module Types.Parsing
     ( Parser
+
     , lineComment, ws, ws'
-    , lexeme, lexeme' , symbol, symbol'
+    , lexeme, lexeme'
+    , symbol, symbol'
+    , keyword, keyword'
+    , rawIdentifier
+    , rawQuotedIdentifier
+    , rawUnquotedIdentifier
+
+    , raw
     , commented', many'
     , identifier
+    , scalar
     , decimal
+    , date
     , block
+    , pair
     , numericPair
+    , entry
     , section
+
+    , blob, pairish, blockish
 
     -- | Take over the module, taking care of clashes
     , module Types
@@ -27,7 +42,7 @@ module Types.Parsing
 
 import qualified Data.Text as Text
 
-import Control.Applicative.Permutations   (runPermutation, toPermutation)
+import Control.Applicative.Permutations   (runPermutation, toPermutation, toPermutationWithDefault)
 import Control.Monad.Combinators.NonEmpty (some)
 
 import Text.Megaparsec hiding             (some)
@@ -42,61 +57,124 @@ type Parser = Parsec Void Text
 -- Lexing --
 ------------
 
-lineComment :: Parser Text
+lineComment :: MonadParsec errors Text parser
+            => parser Text
 lineComment = Text.cons <$> char '#' <*> takeWhileP (Just "comment character") (/= '\n')
 
 -- | Lax whitespace, i.e. also consumes comments.
-ws :: Parser ()
+ws :: MonadParsec errors Text parser
+   => parser ()
 ws = Lex.space space1 (void lineComment) {- no block comments #-} empty
 
 -- | Strict whitespace, does not consume comments.
-ws' :: Parser ()
-ws' = Lex.space space1 {- no comments of any knid #-} empty empty
+ws' :: MonadParsec errors Text parser
+    => parser ()
+ws' = Lex.space space1 {- no comments of any kind #-} empty empty
 
--- Convention: strict lexers (that rely on `ws'`) are quoted.
+{- Convention: strict lexers (that rely on `ws'`) are quoted. -}
 
-lexeme, lexeme' :: Parser item -> Parser item
+lexeme, lexeme' :: MonadParsec errors Text parser
+                => parser item -> parser item
 lexeme  = Lex.lexeme ws
 lexeme' = Lex.lexeme ws'
 
-symbol, symbol' :: Text -> Parser Text
+{-
+
+Verbatim lexemes differ in when they are case-sensitive and when they are not. Generally, the
+following holds:
+
+- syntactic parts of PDS script are case-insensitive
+- parts which refer to an item are not, especially when they’re moddable (which comes into play when
+  connecting that item to a localisation key and its translations)
+
+Example PDS script:
+
+    # All identical triggers, even though conventionally logical negation
+    # is cased as `NOT` and tag as `tag`.
+    #
+    # Because the target of `tag` is a moddable item (i.e. a country in this case),
+    # it is case sensitive. (Presumably anyway.)
+    NOT = { tag = ENG }
+    not = { tag = ENG }
+    NOT = { TAG = ENG }
+
+-}
+
+-- | Verbatim, case-sensitive lexemes.
+symbol, symbol' :: MonadParsec errors Text parser
+                => Text -> parser Text
 symbol  = Lex.symbol ws
 symbol' = Lex.symbol ws'
+
+-- | Verbatim, case-insensitive lexemes.
+keyword, keyword' :: MonadParsec errors Text parser
+                  => Text -> parser Text
+keyword  = Lex.symbol' ws
+keyword' = Lex.symbol' ws'
+
+rawIdentifier, rawQuotedIdentifier, rawUnquotedIdentifier :: MonadParsec errors Text parser
+                                                          => parser Text
+
+rawIdentifier = rawQuotedIdentifier <|> rawUnquotedIdentifier
+
+rawQuotedIdentifier = parser <?> descr
+  where
+    parser = lexeme . between quote quote $
+        takeWhile1P (Just "quoted identifier character") (/= '"')
+    descr = "a quoted identifer (e.g. `\"a quoted identifier\"`)"
+    quote = char '"'
+
+rawUnquotedIdentifier = parser <?> descr
+  where
+    parser = lexeme $
+        takeWhile1P (Just "identifier character") validIdentifierChar
+    descr = "an unquoted identifier (e.g. `unquoted-identifier`)"
+    validIdentifierChar = nonSyntactic
+
+-- | Non-syntactic character predicate.
+nonSyntactic :: Char -> Bool
+nonSyntactic c = not (isSpace c) && c `notElem` ("\"#={};,()!&" :: String)
 
 -------------
 -- Parsing --
 -------------
 
+-- | A variant of Megaparsec’s `match`, focussing on just the matched text.
+raw :: MonadParsec errors Text parser
+    => parser any -> parser Text
+raw p = fst <$> match p
+
 -- | Parse an item or a comment.
-commented' :: Parser item -> Parser (Interspersed item)
+commented' :: MonadParsec errors Text parser
+           => parser item -> parser (Interspersed item)
 commented' item = try (lexeme' $ Comment <$> lineComment) <|> (Parsed <$> item)
 
 -- | Parse items interspersed with comments, preserving the comments. NOTE: this functionality is
 -- limited.
-many' :: Parser item -> Parser [Interspersed item]
+many' :: MonadParsec errors Text parser
+      => parser item -> parser [Interspersed item]
 many' = many . commented'
 
-identifier, quotedIdentifier, unquotedIdentifier :: Parser Identifier
+identifier, quotedIdentifier, unquotedIdentifier :: MonadParsec errors Text parser
+                                                 => parser Identifier
 
 identifier = quotedIdentifier <|> unquotedIdentifier
 
-quotedIdentifier = parser <?> descr
-  where
-    parser = fmap QuotedIdentifier . lexeme . between quote quote $
-        takeWhile1P (Just "quoted identifier character") (/= '"')
-    descr = "a quoted identifer (e.g. `\"a quoted identifier\"`)"
-    quote = char '"'
+quotedIdentifier = QuotedIdentifier <$> rawQuotedIdentifier
 
-unquotedIdentifier = parser <?> descr
+unquotedIdentifier = UnquotedIdentifier <$> rawUnquotedIdentifier
+
+-- | PDS script placeholder: more or less anything that’s not whitespace/comments/syntax.
+scalar :: MonadParsec errors Text parser
+       => parser Text
+scalar = rawQuotedIdentifier <|> nonSyntax
   where
-    parser = fmap UnquotedIdentifier . lexeme $
-        takeWhile1P (Just "identifier character") validIdentifierChar
-    descr = "an unquoted identifier (e.g. `unquoted-identifier`)"
-    validIdentifierChar c = not (isSpace c) && c `notElem` ("\"#={};,()!&" :: String)
+    nonSyntax = lexeme $ takeWhile1P (Just "non-syntactic character") nonSyntactic
 
 -- | Parse a PDS script numeric value.
-decimal :: Parser Decimal
-decimal = Lex.signed ws parser <?> "numeric value"
+decimal :: MonadParsec errors Text parser
+        => parser Decimal
+decimal = lexeme (Lex.signed ws parser) <?> "numeric value"
   where
     parser = try fractional <|> (fromIntegral <$> integral)
 
@@ -122,21 +200,55 @@ decimal = Lex.signed ws parser <?> "numeric value"
     digit  _  =
         error "Parsing.decimal.digit: non-exhaustive pattern match, decimal digit was expected"
 
+-- | Parse a PDS script date (e.g. “1836.1.1”). Not actually implemented.
+date :: MonadParsec errors Text parser
+     => parser Text
+date = scalar
+
 -- | `{ body }`
-block :: Parser body -> Parser body
+block :: MonadParsec errors Text parser
+      => parser body -> parser body
 block = between (symbol "{") (symbol "}")
 
--- | `key = value` pair, where key is an identifier and value is numeric.
-numericPair :: Parser (Identifier, Decimal)
-numericPair = do
-    key <- identifier
-    symbol "="
-    value <- decimal
-    optional ws
-    pure $ (key, value)
+-- | `key = value` pair
+pair :: MonadParsec errors Text parser
+     => parser key -> parser value -> parser (key, value)
+pair key value = (,) <$> key <* symbol "=" <*> value
 
--- | `key = { body }` pair, aka a section.
-section :: Text -> Parser body -> Parser body
-section key body = sectionKey *> symbol "=" *> block body
+-- | `key = value` pair, where key is an identifier and value is numeric.
+numericPair :: MonadParsec errors Text parser
+            => parser (Identifier, Decimal)
+numericPair = pair identifier decimal
+
+-- | `literal = value` pair, where the key is syntactically expected. Case-insensitive in the
+-- literal, to reflect the behaviour of the game.
+entry :: MonadParsec errors Text parser
+      => Text -> parser value -> parser value
+entry key value = snd <$> pair key' value
   where
-    sectionKey = lexeme (string' key) <?> [i|entry key ‘${ Text.unpack key }’|]
+    key' = keyword key <?> [i|entry key ‘${ Text.unpack key }’|]
+
+-- | `key = { body }` pair with a verbatim, syntactic key (see `entry`) aka a section.
+section :: MonadParsec errors Text parser
+        => Text -> parser body -> parser body
+section key body = entry key (block body)
+
+-----------------------------------------
+-- Unstructured parsers of last resort --
+-----------------------------------------
+
+-- | Unstructured `a = { b = { 0 1 2 } c }` PDS script. Recognises any one item at the top-level,
+-- including a scalar.
+blob :: MonadParsec errors Text parser
+     => parser Text
+blob = try blockish <|> try pairish <|> scalar
+
+-- | Unstructured PDS script. Only recognises a top-level pair.
+pairish :: MonadParsec errors Text parser
+        => parser Text
+pairish = raw $ pair scalar scalar
+
+-- | Unstructured PDS script. Only recognises a top-level block.
+blockish :: MonadParsec errors Text parser
+         => parser Text
+blockish = raw $ pair scalar (block $ many blob)
