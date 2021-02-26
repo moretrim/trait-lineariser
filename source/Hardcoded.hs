@@ -47,15 +47,15 @@ import Types
 
 -- | Path to linearised trait file.
 traitsOutput :: FilePath
-traitsOutput = "linearised-traits.txt"
+traitsOutput = "common" </> "traits.txt"
 
 -- | Path to linearised trait localisation.
 localisationOutput :: FilePath
-localisationOutput = "linearised-traits.csv"
+localisationOutput = "localisation" </> "linearised-traits.csv"
 
 -- | Path to linearised oob directory.
-oobOutput :: FilePath
-oobOutput = "history" </> "units"
+oobOutput :: FilePath -> FilePath
+oobOutput path = "history" </> "units" </> path
 
 -- | Identifier of the unit personality.
 unitPersonality :: Text

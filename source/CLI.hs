@@ -415,12 +415,11 @@ and/or `--include-base-game`.)
                 let target = outputPath </> path
                 createDirectoryIfMissing {-- create parents --} True $ takeDirectory target
                 writeFile target $ Text.unpack contents
-            writeOob path = write (Hardcoded.oobOutput </> path)
 
         write Hardcoded.traitsOutput       . formatTraits       $ linearisedTraits
         write Hardcoded.localisationOutput . formatLocalisation $ linearisedLocalisation
         forM_ linearisedOobs $ \(target, oob) -> do
-            writeOob target $ formatOob oob
+            write (Hardcoded.oobOutput target) $ formatOob oob
 
         renameDirectory outputPath Hardcoded.outputBase
 
