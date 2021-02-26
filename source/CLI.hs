@@ -67,7 +67,14 @@ append = appendConsoleRegion
 concludeWith :: (LiftRegion m) => ConsoleRegion -> Text -> m ()
 concludeWith region suffix = liftRegion $ do
     contents <- getConsoleRegion region
-    finishConsoleRegion region (contents <> suffix)
+
+    -- !! this sequencing is necessary !!
+    -- Though there is nothing in the documention of concurrent-output to suggest it is required, we
+    -- get intermitteng segfaults if we don’t force this concatenation result ahead of
+    -- `finishConsoleRegion`.
+    let !finisher = contents <> suffix
+
+    finishConsoleRegion region finisher
 
 -- | Like `finishConsoleRegion`, but preserve current region contents.
 conclude :: (LiftRegion m) => ConsoleRegion -> m ()
@@ -368,28 +375,29 @@ ${ prettyParseErrors errs }
     traitsRegion       <- initRegion
     localisationRegion <- initRegion
     oobRegion          <- initRegion
-    ((traits, localisation'), oobs) <-
+
+    ((traits, localisation), oobs) <-
         parseTraits traitsRegion
             `concurrently` parseLocalisation localisationRegion
             `concurrently` parseOob oobRegion
 
     case baseGameLocalisation of
         IncludeBaseGame   -> append localisationRegion $ "\n" <> mconcat
-            [ [i|Found ${ HashMap.size localisation' } entries across all localisation files,|]
+            [ [i|Found ${ HashMap.size localisation } entries across all localisation files,|]
             , [i| and adding to it ${ HashMap.size baseLocalisation } base game entries.|]
             ]
         NoIncludeBaseGame -> append localisationRegion [i|
-Found ${ HashMap.size localisation' } entries across all localisation files.|]
+Found ${ HashMap.size localisation } entries across all localisation files.|]
 
     conclude localisationRegion
 
     -- Compute everything!…
-    let localisation                      = extendLocalisation baseGameLocalisation localisation'
+    let extendedLocalisation              = extendLocalisation baseGameLocalisation localisation
         linearisedTraits                  = lineariseTraits traits
         linearisedMods                    = lineariseMods linearisedTraits
         (personalities, backgrounds)      = traitsLocalisationKeys traits
         (orphans, linearisedLocalisation) =
-            lineariseLocalisation linearisedMods localisation personalities backgrounds
+            lineariseLocalisation linearisedMods extendedLocalisation personalities backgrounds
         linearisedOobs = oobs & mapped . _2 %~ lineariseOob
 
     when (not $ null orphans) $ do
