@@ -95,6 +95,9 @@ Decoding of ${what} ‘${ filePath path }’ failed, aborting:
     ${err}
 |]
 
+prettyParseErrors :: ParseErrorBundle Text Void -> Text
+prettyParseErrors = Text.pack . errorBundlePretty
+
 localisationContents :: ConsoleRegion -> BaseGameLocalisation -> FilePath -> FilePath -> IO Text
 localisationContents region baseGameLocalisation base path = do
     contents <- fileContents path
@@ -258,7 +261,7 @@ ${ lineariserHeader }
                     noteFailure [iTrim|
 Parsing of traits file failed:
 
-${ errorBundlePretty errs }
+${ prettyParseErrors errs }
 |]
 
                 Right traits -> do
@@ -309,7 +312,7 @@ Reading localisation from ${ length paths } base path(s)…
                             Left errs -> do
                                 append localisationRegion [i|
 Parsing of one localisation file failed, skipping it:
-    ${ errorBundlePretty errs }
+    ${ prettyParseErrors errs }
 |]
 
                                 pure mempty
@@ -335,7 +338,7 @@ Adding order-of-battle files from mod path ‘${ filePath oobBase }’…
                         Left errs -> noteFailure [iTrim|
 Parsing of OOB file ‘${ filePath path }’ failed:
 
-${ errorBundlePretty errs }
+${ prettyParseErrors errs }
 |]
 
                         Right (Right parsed) -> pure [(target, parsed)]

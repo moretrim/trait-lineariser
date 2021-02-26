@@ -26,7 +26,8 @@ module Types
     , Entry
     , Localisation, OrderedLocalisation
 
-    , LeaderKind(..), _LeaderGeneral, _LeaderAdmiral, formatLeaderKind
+    , TrailCommented
+    , LeaderKind(..), _LeaderGeneral, _LeaderAdmiral
     , Leader(..)
         , leaderName
         , leaderPicture
@@ -39,7 +40,7 @@ module Types
         , _LeaderFragment
         , _LeaderEntry
 
-    , UnitKind(..), _UnitArmy, _UnitNavy, formatUnitKind
+    , UnitKind(..), _UnitArmy, _UnitNavy
     , Unit(..), unitKind, unitEntries
 
     , OobEntry(..), _OobFragment, _OobUnit, _OobLeader
@@ -64,6 +65,7 @@ module Types
     , module Data.Map.Lens
     , module Data.HashMap.Strict
 
+    , module Data.Word
     , module Data.Char
     , module Data.String.Here.Interpolated
     , module Data.Text
@@ -90,12 +92,13 @@ import Data.List.NonEmpty  (NonEmpty(..))
 import Data.Map.Lens
 import Data.HashMap.Strict (HashMap)
 
+import Data.Word
 import Data.Char
 import Data.String.Here.Interpolated
 import Data.Text           (Text)
 import qualified Data.Text as Text
 import Data.Ratio          ((%))
-import Data.Decimal        (Decimal)
+import Data.Decimal
 
 ---------------------
 -- Program options --
@@ -334,17 +337,19 @@ data LeaderKind
     deriving stock (Show, Read, Eq, Ord, Enum, Bounded, Generic)
 makePrisms ''LeaderKind
 
-formatLeaderKind :: LeaderKind -> Text
-formatLeaderKind = \case LeaderGeneral -> "land"; LeaderAdmiral -> "sea"
+-- | Preserve trailing (to end-of-line) comments. A `mempty` comment stands for either an empty
+-- trailing comment (same as absent), or the fact that the item was parsed inline.
+type TrailCommented item = (item, Text)
 
+-- | Order-of-battle file leader definition.
 data Leader = Leader
-    { _leaderName        :: Identifier
-    , _leaderPicture     :: Maybe Text
-    , _leaderDate        :: Text
-    , _leaderKind        :: LeaderKind
-    , _leaderPersonality :: Identifier
-    , _leaderBackground  :: Identifier
-    , _leaderPrestige    :: Maybe Decimal
+    { _leaderName        :: TrailCommented Identifier
+    , _leaderPicture     :: Maybe (TrailCommented Text)
+    , _leaderDate        :: TrailCommented Text
+    , _leaderKind        :: TrailCommented LeaderKind
+    , _leaderPersonality :: TrailCommented Identifier
+    , _leaderBackground  :: TrailCommented Identifier
+    , _leaderPrestige    :: Maybe (TrailCommented Decimal)
     }
     deriving stock (Show, Read, Eq, Ord, Generic)
 makeLenses ''Leader
@@ -362,9 +367,6 @@ data UnitKind
     | UnitNavy
     deriving stock (Show, Read, Eq, Ord, Enum, Bounded, Generic)
 makePrisms ''UnitKind
-
-formatUnitKind :: UnitKind -> Text
-formatUnitKind = \case UnitArmy -> "army"; UnitNavy -> "navy"
 
 data Unit = Unit
     { _unitKind    :: UnitKind

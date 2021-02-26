@@ -21,27 +21,35 @@ import qualified Hardcoded
 import Types.Parsing
 import Format
 
-leaderType :: MonadParsec errors Text parser
-           => parser LeaderKind
-leaderType =
-        LeaderGeneral <$ keyword "land"
-    <|> LeaderAdmiral <$ keyword "sea"
+leaderType' :: MonadParsec errors Text parser
+            => parser LeaderKind
+leaderType' =
+        LeaderGeneral <$ keyword' "land"
+    <|> LeaderAdmiral <$ keyword' "sea"
 
 leader :: MonadParsec errors Text parser
        => parser Leader
 leader = section "leader" . runPermutation $
         Leader
-    <$> leaderEntry        "name" identifier
-    <*> leaderEntry'    "picture"     scalar
-    <*> leaderEntry        "date"       date
-    <*> leaderEntry        "type" leaderType
-    <*> leaderEntry "personality" identifier
-    <*> leaderEntry  "background" identifier
-    <*> leaderEntry'   "prestige"    decimal
+    <$> leaderEntry        "name" identifier'
+    <*> leaderEntry'    "picture"     scalar'
+    <*> leaderEntry        "date"       date'
+    <*> leaderEntry        "type" leaderType'
+    <*> leaderEntry "personality" identifier'
+    <*> leaderEntry  "background" identifier'
+    <*> leaderEntry'   "prestige"    decimal'
 
   where
-    leaderEntry  key value = toPermutation $ entry key value
-    leaderEntry' key value = toPermutationWithDefault Nothing $ Just <$> entry key value
+    leaderEntry  key value = toPermutation                            $  entryWithTrail key value
+    leaderEntry' key value = toPermutationWithDefault Nothing $ Just <$> entryWithTrail key value
+
+    entryWithTrail key value = do
+        parsed <- entry key value
+        trail  <- try (combine <$> raw ws' <*> lineComment <* ws) <|> (mempty <$ ws)
+        pure (parsed, trail)
+
+    -- restore the space character that was consumed by the just-preceding strict parser
+    combine whitespace trail = " " <> whitespace <> trail
 
 unit :: MonadParsec errors Text parser
      => parser Unit
@@ -103,14 +111,24 @@ lineariseOob = fmap lineariseOobEntry
     lineariseEntry             verbatim =    verbatim
 
     lineariseLeader leader = leader
-        { _leaderPersonality = Hardcoded.unitPersonalityIdentifier
-        , _leaderBackground =
-            _leaderPersonality leader `Hardcoded.productIdentifier` _leaderBackground leader
+        { _leaderPersonality = (Hardcoded.unitPersonalityIdentifier, personalityTrail)
+        , _leaderBackground = (personality `Hardcoded.productIdentifier` background
+                              , backgroundTrail
+                              )
         }
+          where
+            (personality, personalityTrail) = _leaderPersonality leader
+            (background, backgroundTrail)   = _leaderBackground  leader
 
 ------------
 -- Format --
 ------------
+
+formatTrailCommented :: (item -> Text) -> TrailCommented item -> Text
+formatTrailCommented formatItem (item, trail) = formatItem item <> trail
+
+formatLeaderKind :: LeaderKind -> Text
+formatLeaderKind = \case LeaderGeneral -> "land"; LeaderAdmiral -> "sea"
 
 -- We shut up a couple spurious “defined but not used” warnings, which seem to be caused by the
 -- quasi-quotes.
@@ -118,35 +136,58 @@ formatLeader :: Int -> Leader -> Text
 formatLeader level leader = [iTrim|
 leader = ${
     formatLines level $ catMaybes [
-        entry  "name"        (formatIdentifier . _leaderName),
-        entry' "picture"     _leaderPicture,
-        entry  "date"        _leaderDate,
-        entry  "type"        (formatLeaderKind . _leaderKind),
-        entry  "personality" (formatIdentifier . _leaderPersonality),
-        entry  "background"  (formatIdentifier . _leaderBackground),
-        entry' "prestige"    (fmap formatPrestige . _leaderPrestige)
+        entry  "name"        formatIdentifier _leaderName,
+        entry' "picture"     id               _leaderPicture,
+        entry  "date"        id               _leaderDate,
+        entry  "type"        formatLeaderKind _leaderKind,
+        entry  "personality" formatIdentifier _leaderPersonality,
+        entry  "background"  formatIdentifier _leaderBackground,
+        entry' "prestige"    formatDecimal    _leaderPrestige
     ]}
 |]
   where
-    formatPrestige = Text.pack . show @Decimal -- the instance results in a round-trip
-    formatPair name value = [i|${name::Text} = ${value}|] :: Text
-    entry  name focus = pure $ formatPair name     (focus leader)
-    entry' name focus =        formatPair name <$>  focus leader
+    formatPair name value = [i|${name::Text} = ${value}|]
+    formatAttr name formatValue attr = formatTrailCommented (formatPair name . formatValue) attr
+    entry :: Text -> (item -> Text) -> (Leader -> TrailCommented item) -> Maybe Text
+    entry  name formatValue focus = pure . formatAttr name formatValue  $  focus leader
+    entry' :: Text -> (item -> Text) -> (Leader -> Maybe (TrailCommented item)) -> Maybe Text
+    entry' name formatValue focus =        formatAttr name formatValue <$> focus leader
 
-formatEntry :: Int -> LeaderEntry -> Text
-formatEntry _level (LeaderFragment verbatim) =     verbatim
-formatEntry  level      (LeaderEntry leader) = formatLeader level leader
+-- | A textual fragment together with the separator to join with the next.
+type Fragment = (Text, Text)
+
+joinFragments :: Foldable cont => cont Fragment -> Text
+joinFragments = fst . foldl' joiner ("", "")
+  where
+    joiner (soFar, sep) (fragment, nextSep) = (soFar <> sep <> fragment, nextSep)
+
+joinMap :: (Functor cont, Foldable cont) => (a -> Fragment) -> cont a -> Text
+joinMap = (joinFragments .) . fmap
+
+restoredBreak :: Int -> Fragment
+restoredBreak level = (mempty, indentedLineBreak "\n" level)
+
+restoredSeparator :: Int -> Text
+restoredSeparator = indentedLineBreak "\n\n"
+
+formatUnitKind :: UnitKind -> Text
+formatUnitKind = \case UnitArmy -> "army"; UnitNavy -> "navy"
+
+formatEntry :: Int -> LeaderEntry -> Fragment
+formatEntry  level      (LeaderEntry leader) = (formatLeader level leader, restoredSeparator level)
+formatEntry _level (LeaderFragment verbatim) = (verbatim,                  mempty)
 
 formatUnit :: Int -> Unit -> Text
 formatUnit level (Unit kind entries) = [iTrim|
 ${formatUnitKind kind} = ${
-    formatLines level $ fmap (formatEntry $ succ level) entries }
+    formatBlock level . joinFragments . (restoredBreak (succ level):) $
+        fmap (formatEntry $ succ level) entries }
 |]
 
-formatOobEntry :: Int -> OobEntry -> Text
-formatOobEntry  level     (OobLeader leader) = formatLeader level leader <> "\n\n"
-formatOobEntry  level         (OobUnit unit) =   formatUnit level   unit
-formatOobEntry _level (OobFragment verbatim) =     verbatim
+formatOobEntry :: Int -> OobEntry -> Fragment
+formatOobEntry  level     (OobLeader leader) = (formatLeader level leader, restoredSeparator level)
+formatOobEntry  level         (OobUnit unit) = (formatUnit   level   unit, restoredSeparator level)
+formatOobEntry _level (OobFragment verbatim) = (verbatim,                  mempty)
 
 formatOob :: [OobEntry] -> Text
-formatOob = Text.concat . fmap (formatOobEntry 0)
+formatOob = joinMap (formatOobEntry 0)

@@ -21,7 +21,7 @@ module Hardcoded
     , importanceSymbol
     , integralBlanks, percentageBlanks
     , symbolBlanks
-    , formatInteger, formatPercentage
+    , formatDecimal, formatDecimal', formatInteger, formatPercentage
 
     , attack
     , defence
@@ -304,17 +304,29 @@ numericFixes = spaces . hyphens
     hyphens = Text.replace "-" "–"
     spaces  = Text.replace " " "  "
 
+-- Really belong to `Format` (which in fact re-exports them), but they are used here and we want
+-- this module early in the dependency hierarchy.
+formatDecimal, formatDecimal' :: Decimal -> Text
+
+-- | Displays a decimal as it was stored.
+formatDecimal = Text.pack . show @Decimal
+
+-- | Like `formatDecimal`, but with a plus sign for non-negative quantities.
+formatDecimal' quantity = plusSign $ formatDecimal quantity
+  where
+    plusSign = if quantity >= 0
+                   then ("+" <>)
+                   else id
+
 formatInteger, formatPercentage :: Decimal -> Text
 
 -- | Format small integer with sign, e.g. “-2”.
-formatInteger quantity' = numericFixes . Text.pack $ printf "%+1d" quantity
-  where
-    quantity = round @Decimal @Int quantity'
+formatInteger = numericFixes . formatDecimal'
 
--- | Format modifier as a percent change, e.g. “+05%”
-formatPercentage quantity' = numericFixes . Text.pack $ printf "%+3d%%" quantity
+-- | Format modifier as a percent change, e.g. “+05%”. Note the fixed number of columns.
+formatPercentage quantity = numericFixes . Text.pack $ printf "%+3d%%" percentage
   where
-    quantity = round @Decimal @Int $ quantity' * 100
+    percentage = round @Decimal @Int $ quantity * 100
 
 -- Mods of interest, for highlighting purposes.
 

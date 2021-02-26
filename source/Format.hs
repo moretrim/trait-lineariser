@@ -10,10 +10,13 @@ module Format
     ( indent, indentedLineBreak
     , offsetWith, offset
     , formatBlock, formatLines
+
+    , Hardcoded.formatDecimal, Hardcoded.formatDecimal'
     ) where
 
 import qualified Data.Text as Text
 
+import qualified Hardcoded
 import Types
 
 indent :: Int -> Text
@@ -33,7 +36,7 @@ offset = offsetWith "\n"
 -- | Format a braced block from verbatim contents.
 formatBlock :: Int -> Text -> Text
 formatBlock level body = [iTrim|
-    {${body}${ if Text.null body then "" else indentedLineBreak "\n" level }}
+{${body}${ if Text.null body then "" else indentedLineBreak "\n" level }}
 |]
 
 -- | Format a braced block from lines.
