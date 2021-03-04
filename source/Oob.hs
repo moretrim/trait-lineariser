@@ -190,4 +190,8 @@ formatOobEntry  level         (OobUnit unit) = (formatUnit   level   unit, resto
 formatOobEntry _level (OobFragment verbatim) = (verbatim,                  mempty)
 
 formatOob :: [OobEntry] -> Text
-formatOob = joinMap (formatOobEntry 0)
+formatOob = restoreEnding . joinMap (formatOobEntry 0)
+  where
+    restoreEnding joined | Text.null joined         = joined
+    restoreEnding joined | '\n' <- Text.last joined = joined
+    restoreEnding joined | otherwise                = Text.snoc joined '\n'
