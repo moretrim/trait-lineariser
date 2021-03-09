@@ -308,8 +308,7 @@ lineariserHeader = [iTrim|
 |]
 
 formatTraits :: Traits BiList Grouped -> Text
-formatTraits traits = do
-    [iTrim|
+formatTraits traits = textFile [iTrim|
 ${lineariserHeader}
 #
 # For ease of navigation every group of personality-background pairs is opened by a comment. E.g.
@@ -332,3 +331,5 @@ background = {
     }
 }
 |]
+  where
+    textFile = (`Text.snoc` '\n')

@@ -286,4 +286,6 @@ formatEntry (key, translations) = key <> ";" <> translationColumns
     formatColumn translation = fromMaybe "" translation <> ";"
 
 formatLocalisation :: [Entry] -> Text
-formatLocalisation = Text.unlines . fmap formatEntry
+formatLocalisation =
+    -- `Text.unlines` ensures output is in fact a text file
+    Text.unlines . fmap formatEntry
