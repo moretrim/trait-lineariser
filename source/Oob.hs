@@ -21,9 +21,9 @@ import qualified Hardcoded
 import Types.Parsing
 import Format
 
-leaderType' :: MonadParsec errors Text parser
+leaderKind' :: MonadParsec errors Text parser
             => parser LeaderKind
-leaderType' =
+leaderKind' =
         LeaderGeneral <$ keyword' "land"
     <|> LeaderAdmiral <$ keyword' "sea"
 
@@ -34,7 +34,7 @@ leader = section "leader" . runPermutation $
     <$> leaderEntry        "name" identifier'
     <*> leaderEntry'    "picture"     scalar'
     <*> leaderEntry        "date"       date'
-    <*> leaderEntry        "type" leaderType'
+    <*> leaderEntry        "type" leaderKind'
     <*> leaderEntry "personality" identifier'
     <*> leaderEntry  "background" identifier'
     <*> leaderEntry'   "prestige"    decimal'
@@ -127,33 +127,21 @@ lineariseOob = fmap lineariseOobEntry
 formatTrailCommented :: (item -> Text) -> TrailCommented item -> Text
 formatTrailCommented formatItem (item, trail) = formatItem item <> trail
 
-formatLeaderKind :: LeaderKind -> Text
-formatLeaderKind = \case LeaderGeneral -> "land"; LeaderAdmiral -> "sea"
+{-|
 
--- We shut up a couple spurious “defined but not used” warnings, which seem to be caused by the
--- quasi-quotes.
-formatLeader :: Int -> Leader -> Text
-formatLeader level leader = [iTrim|
-leader = ${
-    formatLines level $ catMaybes [
-        entry  "name"        formatIdentifier _leaderName,
-        entry' "picture"     id               _leaderPicture,
-        entry  "date"        id               _leaderDate,
-        entry  "type"        formatLeaderKind _leaderKind,
-        entry  "personality" formatIdentifier _leaderPersonality,
-        entry  "background"  formatIdentifier _leaderBackground,
-        entry' "prestige"    formatDecimal    _leaderPrestige
-    ]}
-|]
-  where
-    formatPair name value = [i|${name::Text} = ${value}|]
-    formatAttr name formatValue attr = formatTrailCommented (formatPair name . formatValue) attr
-    entry :: Text -> (item -> Text) -> (Leader -> TrailCommented item) -> Maybe Text
-    entry  name formatValue focus = pure . formatAttr name formatValue  $  focus leader
-    entry' :: Text -> (item -> Text) -> (Leader -> Maybe (TrailCommented item)) -> Maybe Text
-    entry' name formatValue focus =        formatAttr name formatValue <$> focus leader
+Unlike e.g. `Traits`, the formatting here is a little less focused on lines. The primary reason
+for this is the fact that the output is not entirely new text, but must instead deal with and
+include verbatim fragments. Consider for instance that these original fragments may end in a
+trailing sequence of whitespace.
 
--- | A textual fragment together with the separator to join with the next.
+Consequently instead of handling lines separated by varying amount of sometimes indented linebreaks,
+the formatting here deals in textual blobs, each coming with an separator to “link up” with the next
+fragment in a chain.
+
+In the following we distinguish between those fragments of “fresh” content, which we are free to
+format however we want; and fragments of original blobs of text which come in mostly verbatim.
+
+-}
 type Fragment = (Text, Text)
 
 joinFragments :: Foldable cont => cont Fragment -> Text
@@ -164,34 +152,84 @@ joinFragments = fst . foldl' joiner ("", "")
 joinMap :: (Functor cont, Foldable cont) => (a -> Fragment) -> cont a -> Text
 joinMap = (joinFragments .) . fmap
 
-restoredBreak :: Int -> Fragment
-restoredBreak level = (mempty, indentedLineBreak "\n" level)
+-- | Intended usage:
+--
+--     myFormattedSection = formatFreshContents [iTrim|
+--     section-key = ${
+--         sectionValueAntiquotation
+--     }
+--     |]
+--
+-- This ends the section by a linebreak, which cannot otherwise be specified through the `iTrim`
+-- quasiquoter.
+formatFreshContents :: Text -> Text
+formatFreshContents = (`Text.snoc` '\n')
 
-restoredSeparator :: Int -> Text
-restoredSeparator = indentedLineBreak "\n\n"
+formatLeaderKind :: LeaderKind -> Text
+formatLeaderKind = \case LeaderGeneral -> "land"; LeaderAdmiral -> "sea"
+
+formatLeader :: Int -> Leader -> Text
+formatLeader level leader = formatFreshContents [iTrim|
+leader = ${
+    formatLines level $ catMaybes [
+        entry  "name"        formatIdentifier _leaderName,
+        entry' "picture"     id               _leaderPicture,
+        entry  "date"        id               _leaderDate,
+        entry  "type"        formatLeaderKind _leaderKind,
+        entry  "personality" formatIdentifier _leaderPersonality,
+        entry  "background"  formatIdentifier _leaderBackground,
+        entry' "prestige"    formatDecimal    _leaderPrestige
+    ]
+}
+|]
+  where
+    formatPair name value = [i|${name::Text} = ${value}|]
+    formatAttr name formatValue attr = formatTrailCommented (formatPair name . formatValue) attr
+    entry :: Text -> (item -> Text) -> (Leader -> TrailCommented item) -> Maybe Text
+    entry  name formatValue focus = pure . formatAttr name formatValue  $  focus leader
+    entry' :: Text -> (item -> Text) -> (Leader -> Maybe (TrailCommented item)) -> Maybe Text
+    entry' name formatValue focus =        formatAttr name formatValue <$> focus leader
+
+-- | The fragment link for fresh contents. Visually, in the intended (pseudo-)output:
+--
+--     fresh-section = {
+--         fresh-contents
+--     }<fresh section linebreak>
+--     <<fresh separator>>
+--     fresh-section = {
+--         fresh-contents
+--     }<fresh section linebreak>
+--     <EOF>
+--
+-- (With some syntactic elements highlighted through <bracket descriptions>, and the effect of
+-- `freshSeparator` in <<double brackets>>.)
+freshSeparator :: Int -> Text
+freshSeparator = indentedLineBreak "\n"
+
+formatEntry :: Int -> LeaderEntry -> Fragment
+formatEntry  level      (LeaderEntry leader) = (formatLeader level leader, freshSeparator level)
+formatEntry _level (LeaderFragment verbatim) = (verbatim,                  mempty)
 
 formatUnitKind :: UnitKind -> Text
 formatUnitKind = \case UnitArmy -> "army"; UnitNavy -> "navy"
 
-formatEntry :: Int -> LeaderEntry -> Fragment
-formatEntry  level      (LeaderEntry leader) = (formatLeader level leader, restoredSeparator level)
-formatEntry _level (LeaderFragment verbatim) = (verbatim,                  mempty)
-
 formatUnit :: Int -> Unit -> Text
-formatUnit level (Unit kind entries) = [iTrim|
-${formatUnitKind kind} = ${
-    formatBlock level . joinFragments . (restoredBreak (succ level):) $
-        fmap (formatEntry $ succ level) entries }
+formatUnit level (Unit kind entries) = formatFreshContents [iTrim|
+${formatUnitKind kind} = {${
+    joinFragments . (restoredBreak:) $
+        fmap (formatEntry $ succ level) entries
+}}
 |]
+  where
+    restoredBreak = (mempty, indentedLineBreak "\n" $ succ level)
 
 formatOobEntry :: Int -> OobEntry -> Fragment
-formatOobEntry  level     (OobLeader leader) = (formatLeader level leader, restoredSeparator level)
-formatOobEntry  level         (OobUnit unit) = (formatUnit   level   unit, restoredSeparator level)
+formatOobEntry  level     (OobLeader leader) = (formatLeader level leader, freshSeparator level)
+formatOobEntry  level         (OobUnit unit) = (formatUnit   level   unit, freshSeparator level)
 formatOobEntry _level (OobFragment verbatim) = (verbatim,                  mempty)
 
 formatOob :: [OobEntry] -> Text
-formatOob = restoreEnding . joinMap (formatOobEntry 0)
-  where
-    restoreEnding joined | Text.null joined         = joined
-    restoreEnding joined | '\n' <- Text.last joined = joined
-    restoreEnding joined | otherwise                = Text.snoc joined '\n'
+formatOob =
+    -- If the final fragment is fresh content, it ends in a newline. Otherwise we end in an original
+    -- blob. Consequently the output is a text file so long as the original file was.
+    joinMap (formatOobEntry 0)
