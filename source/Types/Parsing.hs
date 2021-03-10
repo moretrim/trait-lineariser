@@ -190,22 +190,22 @@ decimalP lexP wsP = lexP (Lex.signed wsP parser) <?> "numeric value"
     parser = try fractional <|> (toDecimal <$> integral)
 
     integral   = Lex.decimal
-    fractional = (+) <$> whole <*> fraction
+    fractional = integerPart >>= fractionalPart
 
     -- N.b. not appropriate for fractional parts. We want to preserve the input precision, and the
-    -- whole of `Num` etc. is not setup for that. The goal is that a parsed `"0.0"` is really stored
-    -- as `0.0`, and not e.g. `0`.
+    -- whole of `Num` etc. is not setup for that. The goal is that a parsed `"1.0"` is really stored
+    -- as `1.0`, and not `1`.
     toDecimal = fromInteger @Decimal
 
-    whole            = maybe 0 toDecimal <$> optional integral
-    fraction         = fromDigits <$ decimalSeparator <*> takeWhile1P (Just "digit") isDigit
-    decimalSeparator = symbol "."
+    integerPart        = fromMaybe 0 <$> optional integral
+    fractionalPart int = fromDigits int <$ decimalSeparator <*> takeWhile1P (Just "digit") isDigit
 
-    fromDigits = fromTally . Text.foldl' tally (0 :: Word8, 1 :: Integer, 0 :: Integer)
+    decimalSeparator = symbol "."
+    fromDigits int = fromTally int . Text.foldl' tally (0 :: Word8, 1 :: Integer, 0 :: Integer)
     tally (!places, !exp', !mag) d = (succ places, exp' * 10, 10 * mag + digit d)
     -- This is where we are careful about storing precision, by using specific `Decimal` machinery
     -- (that we know won’t perform normalisation) instead of the more general numeric classes.
-    fromTally (!places, _exp', !mag) = Decimal places mag
+    fromTally int (!places, !exp', !mag) = Decimal places $ exp' * int + mag
     digit '0' = 0
     digit '1' = 1
     digit '2' = 2
