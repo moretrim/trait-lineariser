@@ -342,7 +342,14 @@ Adding order-of-battle files from mod path ‘${ filePath oobBase }’…
                     let path = oobBase </> target
                     contents <- either (decodingFailure "order-of-battle file" path) pure =<< fileContents path
                     case runParser oob path contents of
-                        Left errs -> noteFailure [iTrim|
+                        Left errs -> do
+                            if takeFileName path == "v2dd2.txt"
+                                then do
+                                    -- The game ships with a dev diary file inside history/units, we
+                                    -- silently skip it.
+                                    pure []
+
+                                else noteFailure [iTrim|
 Parsing of OOB file ‘${ filePath path }’ failed:
 
 ${ prettyParseErrors errs }
