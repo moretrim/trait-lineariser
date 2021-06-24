@@ -382,4 +382,4 @@ extrasImportance (nothingScale -> organisation) (nothingScale -> morale) =
         _ | otherwise                -> NoImportance
 
 outputBase :: FilePath
-outputBase = "out"
+outputBase = "output"

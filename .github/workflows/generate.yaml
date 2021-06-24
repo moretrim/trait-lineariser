@@ -1,0 +1,23 @@
+on:
+  push:
+    branches: ['**']
+    paths:
+      - input/**
+
+name: Generate linearised mod data
+
+jobs:
+  runhaskell:
+    name: Build & run the tool
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: haskell/actions/setup@v1
+        with:
+          ghc-version: '8.6.5'
+
+      - run: cabal update
+      - run: cabal v2-build
+
+      - run: cabal v2-run trait-lineariser -- input +RTS -T -s

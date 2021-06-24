@@ -191,9 +191,9 @@ mod directory if you haven’t already. In addition to or instead of this, you m
 appropriate `replace_path` instructions to you `.mod` file to disallow the game from using unmodded
 OOB data with your mod.
 
-The tool is **non-destructive**. It places all its results in a fresh `out` directory, aborting the
-process if it already exists, and will not modify input files in-place. The results within `out`
-include:
+The tool is **non-destructive**. It places all its results in a fresh `output` directory, aborting
+the process if it already exists, and will not modify input files in-place. The results within
+`output` include:
 
 - a `common/traits.txt` file containing linearised traits
 - a `localisation/linearised-traits.csv` file containing localisation entries

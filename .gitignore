@@ -3,5 +3,6 @@
 /cabal.project.local~
 /dist-newstyle
 
-out
+input
+output
 releases
