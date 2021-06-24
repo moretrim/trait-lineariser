@@ -18,6 +18,12 @@ jobs:
           ghc-version: '8.6.5'
 
       - run: cabal update
-      - run: cabal v2-build
+      - run: cabal v2-build --only-dependencies
 
-      - run: cabal v2-run trait-lineariser -- input +RTS -T -s
+      - run: cabal v2-build
+      - run: cabal v2-run trait-lineariser -- input/* +RTS -T -s
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: output
+          path: ./output

@@ -134,6 +134,27 @@ of random personalities")
   </figcaption>
 </figure>
 
+Generating linearised data for your own mod on GitHub
+-----------------------------------------------------
+
+A GitHub Workflow allows you to run the tool on the data of your choice without needing to install
+anything. You must know how to fork a repo and make a commit with new files. Proceed as follows:
+
+- [fork this repo](https://github.com/moretrim/trait-lineariser/fork)
+- once in your fork you can work on any branch
+- place your mod data root inside an `input` directory in the project root, the name doesn’t matter
+  (read about [the mod data requirements][mod-data-requirements]: in the end trait data should be
+  found at `input/<mod-data-root>/common/traits.txt`)
+- there must be exactly **one** directory of mod data inside `input`
+- add this data to be committed, e.g. `git add --force input`
+- commit the data & push it to the GitHub fork
+- on the GitHub fork visit the Actions tab & wait for the job to appear, after which you can watch
+  and wait for progress to be made… and wait… and wait… and maybe wait just a little bit more
+- once the job has successfully completed, an archive of the generated output will appear in the job
+  summary (away from the logs)
+
+[mod-data-requirements]: #generating-linearised-traits
+
 Building & modifying the tool
 -----------------------------
 
