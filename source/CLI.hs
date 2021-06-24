@@ -219,10 +219,14 @@ process is aborted), and consists of the following:
 |]
                     , blank
                     , paragraph [iTrim|
-- a `traits.txt` file containing linearised traits
+- a `common/traits.txt` file containing linearised traits
 |]
                     , paragraph [iTrim|
-- a `traits.csv` file containing localisation entries
+- a `localisation/linearised-traits.csv` file containing localisation entries
+|]
+                    , paragraph [iTrim|
+- a `history/units` directory containing order-of-battle information modified to define leaders
+  using the newly linearised traits
 |]
                     , blank
                     , paragraph [iTrim|

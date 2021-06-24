@@ -1,0 +1,35 @@
+leader = {
+    name = "Jose Ballivián"
+    date = 1836.1.1
+    type = land
+    personality = unit_personality
+    background = boldxgenerals_aide
+}
+
+army = {
+	name = "Ejército de Bolivia"
+	location = 2313 #Chuquisaca (Sucre)
+	regiment = {
+		name= "1. Brigada de Infanteria"
+		type = infantry
+		home = 2313
+	}
+
+	regiment = {
+		name= "2. Brigada de Infanteria"
+		type = infantry
+		home = 2310
+	}
+
+	regiment = {
+		name= "3. Brigada de Infanteria"
+		type = infantry
+		home = 2311
+	}
+}
+
+PEU=
+	{
+		value=200
+	}
+	

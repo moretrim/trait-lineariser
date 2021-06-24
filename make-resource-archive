@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+project=linearised-traits
+
+function bail {
+    echo >&2 "$0: $@"
+    exit 1
+}
+
+function usage {
+    echo >&2 "\
+Usage: $0 dummy
+Create an archive for the reference implementation contained in ‘resources’.
+  • the dummy argument is unused and can be anything"
+    exit 1
+}
+
+if [[ $# -lt 1 || "$1" == --help ]]; then
+    usage
+fi
+
+cd resources || bail "could not figure out ‘resources’ input directory"
+
+mkdir -p releases || bail "could not figure out ‘releases’ output directory."
+
+if [[ ! -d "$project" ]]; then
+    bail "could not understand project structure: ‘$project’ not found."
+fi
+
+modfile="${project//-/_}".mod
+if [[ ! -r "$modfile" ]]; then
+    bail "could not find mod file ‘$modfile’"
+fi
+
+output="../releases/$project.zip"
+
+zip -r --filesync "$output" "$project" "$modfile" || bail "could not prepare archive"

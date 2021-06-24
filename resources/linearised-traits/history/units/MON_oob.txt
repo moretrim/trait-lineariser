@@ -1,0 +1,19 @@
+army = {
+    name = "Army of the Prince-Bishop"
+	
+	leader = {
+        name = "Mirko Petrovic"
+        date = 1830.1.1
+        type = land
+        personality = unit_personality
+        background = au_faitxpoet
+        prestige = 0.2
+    }
+
+    location = 2583
+	regiment = {
+		name= "1st Montenegrin Infantry"
+		type = irregular
+		home = 2583
+	}
+}
