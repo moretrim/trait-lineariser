@@ -1,7 +1,7 @@
 cabal-version: 2.4
 
 name:         trait-lineariser
-version:      0.1.0
+version:      1.0.0
 synopsis:     A tool that can linearise a traits.txt file from a Victoria II mod
 -- description:
 -- bug-reports:
