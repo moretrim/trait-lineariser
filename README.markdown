@@ -4,6 +4,8 @@ Victoria 2 Trait Lineariser
 A modder tool to assist in the process of linearising the leader traits contained in
 `common/traits.txt`.
 
+Not a modder? Check out our [releases][].
+
 Motivation
 ----------
 
