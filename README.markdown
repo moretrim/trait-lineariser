@@ -86,6 +86,9 @@ Flaws include:
   impede but does not outright prevent using the interface elements there (i.e. the leader creation
   buttons and the automatic setting checkboxes)—this may be a base game limitation exacerbated by
   the long descriptions
+* the resulting traits contained in `common/traits.txt` are much harder to understand & modify: if
+  one personality needs to be adjusted (e.g. it needs to grant more attack score), *all*
+  corresponding composite traits have to be adjusted in a consistent manner
 
 #### Sorting
 
@@ -97,42 +100,13 @@ system with separate personality & background as well.
 
 #### Effect tooltips
 
-The now combined traits always include their stat description wherever they are named, which
-includes the effects of decisions or events that define leaders:
+The composite traits always include their stat description wherever they are named, which includes
+the effect tooltips of decisions or events that define leaders:
 
 ![General definition effect](media/leader-definition-tooltip.png?raw=true "Defining a general by
 decision")
 
 This tends to look clumsy.
-
-Implementation details
-----------------------
-
-#### Distribution of leader stats
-
-In unmodded Heart of Darkness the highest defence score a leader can reach is +6 through the *School
-of Defense* background together with one of the *Cautious*, *Implacable*, or *Defiant*
-personalities. Hitting the right background has probability 1 in 105, one of the right personalities
-is 3 in 57, and together that will happen with probability 3 in 5985.
-
-By linearising each distinct combination into 5985 cases, we can notice that hitting one of the 3
-pairs of interest has exactly that same probability. All that this requires is that the game is good
-enough about its random trait rolls that the personality and background picks can be considered
-independent, and that a large amount of traits does not compromise this process of random selection.
-The latter was (very) informally tested:
-
-<figure>
-
-![Leader personality distribution histogram](media/trait-histogram.png?raw=true "Frequency histogram
-of random personalities")
-
-  <figcaption>
-
-  Running the game with 16384 possible leader personalities (only 1 possible background). Frequency
-  histogram of the personalities from many generated leaders.
-
-  </figcaption>
-</figure>
 
 Generating linearised data for your own mod on GitHub
 -----------------------------------------------------
@@ -154,6 +128,8 @@ anything. You must know how to fork a repo and make a commit with new files. Pro
   summary (away from the logs)
 
 [mod-data-requirements]: #generating-linearised-traits
+
+Read [Using the tool](#using-the-tool) to learn how to use this generated data.
 
 Building & modifying the tool
 -----------------------------
@@ -232,7 +208,10 @@ of the localisation information that is used to generated the resulting entries.
 
 You will also likely want to modify the interface to display the linearised traits appropriately.
 For this purpose it is suggested you take a look at the provided reference implementation in
-`resources` (also provided as a separate download).
+[`resources`][] (also provided as a [mini-mod release][releases]).
+
+[`resources`]: ./resources
+[releases]: https://github.com/moretrim/trait-lineariser/releases
 
 The following lists the tweaks contained in the reference implementation (against the unmodded
 game).
@@ -251,10 +230,12 @@ game uses featuring the above tweaks:
 - `gfx/fonts/Arial12_numeric.fnt`
 - `gfx/fonts/Arial12_numeric.tga`
 
-Any extra font should also be referenced in:
+In addition extra text colours are also used in the translation strings, to improve the readability
+of [leader stat summaries](#leader-stat-summaries). These colours as well as any extra font should
+be referenced in:
 
-- `interface/core.gfx`: the version we provide also adds extra text colour possibilities, not just
-  to support colour highlights with `Arial12_numeric` but really for all fonts
+- `interface/core.gfx`: the version we provide adds all required colours not just to support colour
+  highlights with `Arial12_numeric`, but for all fonts
 
 ##### Leader selection screen
 
@@ -303,3 +284,71 @@ Further tweaks performed with the help of `localisation/linearised-traits.csv`:
 These entries are located at the top of the localisation file. The rest of the entries are the
 translations for the composite traits. Note that the tool includes both kinds of entries when it
 generates its output.
+
+Implementation details
+----------------------
+
+#### Linearised traits
+
+Linearised traits are achieved by storing the formerly separate personalities & backgrounds of
+leaders as a single composite background under the hood, which acts as a combination of the two.
+Only one personality is left: `unit_personality` with no stats, which should not be confused with
+the special `no_personality` entry that the game expects and uses e.g. for leaderless armies.
+
+The “unit” and “pair” terminology comes from the mathematical Cartesian product operation, which is
+what is taking place here when turning M personalities and N backgrounds into M×N composite traits.
+The “linearised” terminology comes from turning two separate lists into a longer, unified one.
+
+#### Leader stat summaries
+
+A stat summary consists of the following, with appropriate colour coding:
+
+<figure>
+
+  ![General stat summary][general-stat-summary]
+
+  [general-stat-summary]:
+    media/stat-summary.png?raw=true
+    "The statistics of two generals from the Austrian officer corps"
+
+  <figcaption>
+
+  **attack score, defence score, speed modifier, extras**
+  </figcaption>
+</figure>
+
+Extras, if present, denote one or two remarkable modifier to organisation and/or morale—think of
+it as a tiebreaker for generals with otherwise similar stats. Leader prestige, indicated by the
+column to the left of the portrait, plays a similar role. Extras are displayed as one of the
+following from best to worst: ‘!!!’, ‘?’, blank when unremarkable, ‘¿’, ‘¡¡¡’.
+
+A stat is displayed as blank when neutral (e.g. no bonus to attack, no speed modifier) or
+unremarkable. Great care has been taken that stat summaries have pixel-perfect alignment with one
+another at all times in the leader selection panel, and you can think of all aggregate stats as
+being displayed in columns (e.g. for attack) as well as in leader rows.
+
+#### Distribution of leader stats
+
+In unmodded Heart of Darkness the highest defence score a leader can reach is +6 through the *School
+of Defense* background together with one of the *Cautious*, *Implacable*, or *Defiant*
+personalities. Hitting the right background has probability 1 in 105, one of the right personalities
+is 3 in 57, and together that will happen with probability 3 in 5985.
+
+By linearising each distinct combination into 5985 cases, we can notice that hitting one of the 3
+pairs of interest has exactly that same probability. All that this requires is that the game is good
+enough about its random trait rolls that the personality and background picks can be considered
+independent, and that a large amount of traits does not compromise this process of random selection.
+The latter was (very) informally tested:
+
+<figure>
+
+![Leader personality distribution histogram](media/trait-histogram.png?raw=true "Frequency histogram
+of random personalities")
+
+  <figcaption>
+
+  Running the game with 16384 possible leader personalities (only 1 possible background). Frequency
+  histogram of the personalities from many generated leaders.
+
+  </figcaption>
+</figure>
