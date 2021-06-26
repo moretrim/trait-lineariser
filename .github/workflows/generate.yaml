@@ -3,6 +3,8 @@ on:
     branches: ['**']
     paths:
       - input/**
+  workflow_dispatch:
+  repository_dispatch:
 
 name: Generate linearised mod data
 
